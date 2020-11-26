@@ -60,3 +60,6 @@
 5. 生成的程序在`samples/bin`目录下
 
 > 此工程目前依赖Astra SDK环境，将其放在samples目录下
+
+## Visual Studio 2019 + AstraSDK 开发环境配置
+见官方指导文档https://developer.orbbec.com.cn/technical_library.html?id=22
