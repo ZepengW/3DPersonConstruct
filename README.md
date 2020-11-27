@@ -63,3 +63,7 @@
 
 ## Visual Studio 2019 + AstraSDK 开发环境配置
 见官方指导文档https://developer.orbbec.com.cn/technical_library.html?id=22
+
+注意，生成的exe文件依赖AstraSDK中bin目录下的dll文件
+
+所以还要把，那些dll拷贝到我们自己工程的生成路径中如`x64/Debug`下
