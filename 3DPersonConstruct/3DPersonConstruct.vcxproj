@@ -128,7 +128,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>sfml-graphics.lib;sfml-system.lib;sfml-audio.lib;sfml-network.lib;sfml-window.lib;astra_core_api.lib;astra_core.lib;astra.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>astra_core_api.lib;astra_core.lib;astra.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(SolutionDir)AstraSDK/lib;$(SolutionDir)AstraSDK/lib/Plugins;$(SolutionDir)SFML/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <ProjectReference>
