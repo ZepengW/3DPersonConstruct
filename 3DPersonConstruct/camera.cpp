@@ -18,7 +18,24 @@
 #include <iostream>
 #include <iomanip>
 #include "camera.h"
+#include <time.h>
 
+#ifdef WIN
+#include <io.h>
+#include <direct.h>
+#endif // WIN
+#ifdef LINUX
+#include <unistd.h>
+#include <sys/types.h>
+#endif // LINUX
+
+
+
+using namespace cv;
+
+SampleFrameListener::SampleFrameListener()
+{
+}
 
 void SampleFrameListener::on_frame_ready(astra::StreamReader& reader,
 	astra::Frame& frame)
@@ -30,7 +47,6 @@ void SampleFrameListener::on_frame_ready(astra::StreamReader& reader,
 	{
 		auto depthStream = reader.stream<astra::DepthStream>();
 		print_depth(depthFrame, depthStream.coordinateMapper());
-		//check_fps();
 	}
 	if (colorFrame.is_valid())
 	{
@@ -48,84 +64,76 @@ void SampleFrameListener::print_depth(const astra::DepthFrame& depthFrame,
 		int height = depthFrame.height();
 		int frameIndex = depthFrame.frame_index();
 
-		//determine if buffer needs to be reallocated
-		if (width != lastWidth_ || height != lastHeight_)
-		{
-			buffer_dep = buffer_dep_ptr(new int16_t[depthFrame.length()]);
-			lastWidth_ = width;
-			lastHeight_ = height;
-		}
-		depthFrame.copy_to(buffer_dep.get());
-
-		size_t index = ((width * (height / 2.0f)) + (width / 2.0f));
-		short middle = buffer_dep[index];
-
-		float worldX, worldY, worldZ;
-		float depthX, depthY, depthZ;
-		mapper.convert_depth_to_world(width / 2.0f, height / 2.0f, middle, worldX, worldY, worldZ);
-		mapper.convert_world_to_depth(worldX, worldY, worldZ, depthX, depthY, depthZ);
-
-		std::cout << "depth frameIndex: " << frameIndex
-			<< " value: " << middle
-			<< "depth w:" << width
-			<< "depth h:" << height
-			//<< " wX: " << worldX
-			//<< " wY: " << worldY
-			//<< " wZ: " << worldZ
-			//<< " dX: " << depthX
-			//<< " dY: " << depthY
-			//<< " dZ: " << depthZ
-			<< std::endl;
+		//todo : 这里输出的数据流是2-channel的？看来不是只有一个channel表示距离那么简单
+		int16_t* data = (int16_t*)malloc(depthFrame.length() * sizeof(int16_t));
+		depthFrame.copy_to(data);
+		int16_t* data_resize = (int16_t*)malloc(depthFrame.length() * sizeof(int16_t));
+		for (int i = 0; i < depthFrame.length(); i++)
+			std::cout << data[i] << " ";
+		std::cout << std::endl;
+		Mat frame = Mat(height, width, CV_16UC1, data);
+		cv::imshow("test2", frame);
+		waitKey(10);
+		free(data);
+		
 	}
 
 }
 
 void SampleFrameListener::print_color(const astra::ColorFrame& colorFrame)
 {
-	if (colorFrame.is_valid())
+	if (!colorFrame.is_valid())
+		return;
+	int width = colorFrame.width();
+	int height = colorFrame.height();
+	int frameIndex = colorFrame.frame_index();
+
+	astra::RgbPixel* buffer_color = (astra::RgbPixel*)malloc(colorFrame.length() * sizeof(astra::RgbPixel));
+	colorFrame.copy_to(buffer_color);
+	uint8_t* data = (uchar*)malloc(width * height * 3 * sizeof(uchar));
+	for (size_t i = 0; i < width * height; i++)
 	{
-		int width = colorFrame.width();
-		int height = colorFrame.height();
-		int frameIndex = colorFrame.frame_index();
-
-		if (width != lastWidth_ || height != lastHeight_) {
-			buffer_col = buffer_col_ptr(new astra::RgbPixel[colorFrame.length()]);
-			lastWidth_ = width;
-			lastHeight_ = height;
+		if (i == ((width * (height / 2.0f)) + (width / 2.0f)))
+		{
+			std::cout << i << std::endl;
 		}
-		colorFrame.copy_to(buffer_col.get());
-
-		size_t index = ((width * (height / 2.0f)) + (width / 2.0f));
-		astra::RgbPixel middle = buffer_col[index];
-
-		std::cout << "color frameIndex: " << frameIndex
-			<< " r: " << static_cast<int>(middle.r)
-			<< " g: " << static_cast<int>(middle.g)
-			<< " b: " << static_cast<int>(middle.b)
-			<< std::endl;
+		data[3 * i] = buffer_color[i].b;
+		data[3 * i + 1] = buffer_color[i].g;
+		data[3 * i + 2] = buffer_color[i].r;
 	}
+	free(buffer_color);
+	Mat frame = Mat(height, width, CV_8UC3, data);
+	write_video(this->videoRgbOutput,frame, Size(width, height),"RGB");
+	cv::imshow("test", frame);
+	waitKey(10);
+	free(data);
 }
 
-void SampleFrameListener::check_fps()
+
+void SampleFrameListener::write_video(VideoWriter &writer,cv::Mat frame, cv::Size s,std::string mode)
 {
-	const float frameWeight = 0.5;
+	if (writer.isOpened())
+		writer.write(frame);
+	else
+	{
+		time_t tt = time(NULL);
+		tm* t = localtime(&tt);
+		char filename[20];
+		snprintf(filename, 15, "%04d%02d%02d%02d%02d%02d",
+			t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
+		std::cout << "Create video file. name:" << filename;
 
-	auto newTimepoint = clock_type::now();
-	float frameDuration = std::chrono::duration_cast<duration_type>(newTimepoint - lastTimepoint_).count();
-
-	frameDuration_ = frameDuration * frameWeight + frameDuration_ * (1 - frameWeight);
-	lastTimepoint_ = newTimepoint;
-
-	double fps = 1.0 / frameDuration_;
-
-	auto precision = std::cout.precision();
-	std::cout << std::fixed
-		<< std::setprecision(1)
-		<< fps << " fps ("
-		<< std::setprecision(2)
-		<< frameDuration_ * 1000.0 << " ms)"
-		<< std::setprecision(precision)
-		<< std::endl;
+		if (-1 == access("./output", 0))
+		{
+#ifdef WIN
+			mkdir("./output");
+#endif // WIN
+#ifdef LINUX
+			mkdir("./output", 0777);
+#endif // LINUX
+		}
+		writer.open("./output/" + std::string(filename) + mode+".avi", VideoWriter::fourcc('M', 'J', 'P', 'G'), 25, s, true);
+	}
 }
 
 

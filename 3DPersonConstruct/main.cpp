@@ -1,6 +1,7 @@
 ﻿#include "camera.h"
 #include <key_handler.h>
-#include <opencv2/opencv.hpp>
+#include <time.h>
+
 
 int main(int argc, char** argv)
 {
