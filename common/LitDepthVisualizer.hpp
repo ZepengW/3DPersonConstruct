@@ -21,7 +21,7 @@
 #include <cstring>
 #include <algorithm>
 
-namespace samples { namespace common {
+namespace samples_astra { namespace common {
 
     using namespace astra;
 
