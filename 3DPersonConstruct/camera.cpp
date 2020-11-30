@@ -19,6 +19,7 @@
 #include <iomanip>
 #include "camera.h"
 #include <time.h>
+#include <LitDepthVisualizer.hpp>
 
 #ifdef WIN
 #include <io.h>
@@ -42,6 +43,7 @@ void SampleFrameListener::on_frame_ready(astra::StreamReader& reader,
 {
 	const astra::DepthFrame depthFrame = frame.get<astra::DepthFrame>();
 	const astra::ColorFrame colorFrame = frame.get<astra::ColorFrame>();
+	const astra::PointFrame pointFrame = frame.get<astra::PointFrame>();
 
 	if (depthFrame.is_valid())
 	{
@@ -51,7 +53,12 @@ void SampleFrameListener::on_frame_ready(astra::StreamReader& reader,
 	if (colorFrame.is_valid())
 	{
 		auto depthStream = reader.stream<astra::DepthStream>();
-		print_color(colorFrame);
+		process_rgb(colorFrame);
+	}
+	if (pointFrame.is_valid())
+	{
+		auto pointStream = reader.stream<astra::PointStream>();
+		process_point(pointFrame);
 	}
 }
 
@@ -68,11 +75,10 @@ void SampleFrameListener::print_depth(const astra::DepthFrame& depthFrame,
 		int16_t* data = (int16_t*)malloc(depthFrame.length() * sizeof(int16_t));
 		depthFrame.copy_to(data);
 		int16_t* data_resize = (int16_t*)malloc(depthFrame.length() * sizeof(int16_t));
-		for (int i = 0; i < depthFrame.length(); i++)
-			std::cout << data[i] << " ";
+
 		std::cout << std::endl;
 		Mat frame = Mat(height, width, CV_16UC1, data);
-		cv::imshow("test2", frame);
+		cv::imshow("test3", frame);
 		waitKey(10);
 		free(data);
 		
@@ -80,7 +86,7 @@ void SampleFrameListener::print_depth(const astra::DepthFrame& depthFrame,
 
 }
 
-void SampleFrameListener::print_color(const astra::ColorFrame& colorFrame)
+void SampleFrameListener::process_rgb(const astra::ColorFrame& colorFrame)
 {
 	if (!colorFrame.is_valid())
 		return;
@@ -90,7 +96,7 @@ void SampleFrameListener::print_color(const astra::ColorFrame& colorFrame)
 
 	astra::RgbPixel* buffer_color = (astra::RgbPixel*)malloc(colorFrame.length() * sizeof(astra::RgbPixel));
 	colorFrame.copy_to(buffer_color);
-	uint8_t* data = (uchar*)malloc(width * height * 3 * sizeof(uchar));
+	uint8_t* data = (uint8_t*)malloc(width * height * 3 * sizeof(uint8_t));
 	for (size_t i = 0; i < width * height; i++)
 	{
 		if (i == ((width * (height / 2.0f)) + (width / 2.0f)))
@@ -106,6 +112,28 @@ void SampleFrameListener::print_color(const astra::ColorFrame& colorFrame)
 	write_video(this->videoRgbOutput,frame, Size(width, height),"RGB");
 	cv::imshow("test", frame);
 	waitKey(10);
+	free(data);
+}
+
+void SampleFrameListener::process_point(const astra::PointFrame& pointFrame)
+{
+	if (!pointFrame.is_valid())
+		return;
+	int width = pointFrame.width();
+	int height = pointFrame.height();
+
+	samples_astra::common::LitDepthVisualizer visualizer_;
+	visualizer_.update(pointFrame);
+	const astra::RgbPixel* vizBuffer = visualizer_.get_output();
+	uint8_t* data = (uint8_t*)malloc(width * height * 3 * sizeof(uint8_t));
+	for (int i = 0; i < width * height; i++)
+	{
+		data[3 * i] = vizBuffer[i].b;
+		data[3 * i + 1] = vizBuffer[i].g;
+		data[3 * i + 2] = vizBuffer[i].r;
+	}
+	Mat frame = Mat(height, width, CV_8UC3, data);
+	cv::imshow("test2", frame);
 	free(data);
 }
 

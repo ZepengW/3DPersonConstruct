@@ -17,6 +17,7 @@ int main(int argc, char** argv)
 	auto depthStream = reader.stream<astra::DepthStream>();
 	depthStream.start();
 	reader.stream<astra::ColorStream>().start();
+	reader.stream<astra::PointStream>().start();
 
 	char serialnumber[256];
 	depthStream.serial_number(serialnumber, 256);
