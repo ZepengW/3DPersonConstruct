@@ -291,7 +291,6 @@ namespace samples_astra { namespace common {
             for (unsigned x = 0; x < width; ++x, ++pointData, ++normMap, ++texturePtr)
             {
                 float depth = (*pointData).z;
-
                 Vector3f norm(1,0,0);
 
                 if (useNormalMap)

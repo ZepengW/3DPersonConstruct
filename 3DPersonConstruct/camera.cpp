@@ -20,6 +20,9 @@
 #include "camera.h"
 #include <time.h>
 #include <LitDepthVisualizer.hpp>
+#include <GL/glew.h>
+#include <GLFW/glfw3.h>
+
 
 #ifdef WIN
 #include <io.h>
@@ -34,55 +37,40 @@
 
 using namespace cv;
 
-SampleFrameListener::SampleFrameListener()
+SampleFrameListener::SampleFrameListener(int width, int height):pointDataWindow(width,height)
 {
+
 }
 
 void SampleFrameListener::on_frame_ready(astra::StreamReader& reader,
 	astra::Frame& frame)
 {
-	const astra::DepthFrame depthFrame = frame.get<astra::DepthFrame>();
+	//const astra::DepthFrame depthFrame = frame.get<astra::DepthFrame>();
 	const astra::ColorFrame colorFrame = frame.get<astra::ColorFrame>();
 	const astra::PointFrame pointFrame = frame.get<astra::PointFrame>();
 
-	if (depthFrame.is_valid())
-	{
-		auto depthStream = reader.stream<astra::DepthStream>();
-		print_depth(depthFrame, depthStream.coordinateMapper());
-	}
-	if (colorFrame.is_valid())
-	{
-		auto depthStream = reader.stream<astra::DepthStream>();
-		process_rgb(colorFrame);
-	}
-	if (pointFrame.is_valid())
-	{
-		auto pointStream = reader.stream<astra::PointStream>();
-		process_point(pointFrame);
-	}
+	//this->process_depth(depthFrame);
+	this->process_rgb(colorFrame);
+	this->process_point(pointFrame);
+	this->process_point_rgb(colorFrame, pointFrame);
+	//this->process_depth_rgb(depthFrame, colorFrame);
+	
 }
 
-void SampleFrameListener::print_depth(const astra::DepthFrame& depthFrame,
-	const astra::CoordinateMapper& mapper)
+void SampleFrameListener::process_depth(const astra::DepthFrame& depthFrame)
 {
-	if (depthFrame.is_valid())
-	{
-		int width = depthFrame.width();
-		int height = depthFrame.height();
-		int frameIndex = depthFrame.frame_index();
+	if (!depthFrame.is_valid())
+		return;
+	int width = depthFrame.width();
+	int height = depthFrame.height();
 
-		//todo : 这里输出的数据流是2-channel的？看来不是只有一个channel表示距离那么简单
-		int16_t* data = (int16_t*)malloc(depthFrame.length() * sizeof(int16_t));
-		depthFrame.copy_to(data);
-		int16_t* data_resize = (int16_t*)malloc(depthFrame.length() * sizeof(int16_t));
-
-		std::cout << std::endl;
-		Mat frame = Mat(height, width, CV_16UC1, data);
-		cv::imshow("test3", frame);
-		waitKey(10);
-		free(data);
-		
-	}
+	const int16_t* depthData = depthFrame.data();
+	std::cout << width * height << ";" << depthFrame.length() << std::endl;
+	int16_t* data_test=(int16_t*)malloc(depthFrame.length() * sizeof(int16_t));
+	depthFrame.copy_to(data_test);
+	Mat frame = Mat(height, width, CV_16UC1, data_test);
+	cv::imshow("test3", frame);
+	waitKey(10);
 
 }
 
@@ -101,17 +89,17 @@ void SampleFrameListener::process_rgb(const astra::ColorFrame& colorFrame)
 	{
 		if (i == ((width * (height / 2.0f)) + (width / 2.0f)))
 		{
-			std::cout << i << std::endl;
+			//std::cout << i << std::endl;
 		}
 		data[3 * i] = buffer_color[i].b;
 		data[3 * i + 1] = buffer_color[i].g;
 		data[3 * i + 2] = buffer_color[i].r;
 	}
-	free(buffer_color);
-	Mat frame = Mat(height, width, CV_8UC3, data);
-	write_video(this->videoRgbOutput,frame, Size(width, height),"RGB");
-	cv::imshow("test", frame);
+	Mat frame = Mat(height, width, CV_8UC3, (uint8_t *)data);
+	//write_video(this->videoRgbOutput,frame, Size(width, height),"RGB");
+	cv::imshow("rgb", frame);
 	waitKey(10);
+	free(buffer_color);
 	free(data);
 }
 
@@ -132,9 +120,37 @@ void SampleFrameListener::process_point(const astra::PointFrame& pointFrame)
 		data[3 * i + 1] = vizBuffer[i].g;
 		data[3 * i + 2] = vizBuffer[i].r;
 	}
-	Mat frame = Mat(height, width, CV_8UC3, data);
-	cv::imshow("test2", frame);
+	Mat frame = Mat(height, width, CV_8UC3, (uint8_t *)data);
+	cv::imshow("depth", frame);
+	waitKey(10);
 	free(data);
+}
+
+void SampleFrameListener::process_point_rgb(const astra::ColorFrame& colorFrame, const astra::PointFrame& pointFrame)
+{
+	if((!colorFrame.is_valid())||
+		(!pointFrame.is_valid()))
+		return;
+	int width = pointFrame.width();
+	int height = pointFrame.height();
+	
+	const astra::Vector3f* pointData = pointFrame.data();
+	const astra::RgbPixel* colorData = colorFrame.data();
+	
+	this->pointDataWindow.display(pointData,colorData,width,height);
+}
+
+void SampleFrameListener::process_depth_rgb(const astra::DepthFrame& depthFrame, const astra::ColorFrame& colorFrame)
+{
+	if ((!depthFrame.is_valid())||
+		(!colorFrame.is_valid()))
+		return;
+	int width = depthFrame.width();
+	int height = depthFrame.height();
+
+	const int16_t* depthData = depthFrame.data();
+	const astra::RgbPixel* colorData = colorFrame.data();
+	this->pointDataWindow.display(depthData, colorData, width, height);
 }
 
 
@@ -163,5 +179,7 @@ void SampleFrameListener::write_video(VideoWriter &writer,cv::Mat frame, cv::Siz
 		writer.open("./output/" + std::string(filename) + mode+".avi", VideoWriter::fourcc('M', 'J', 'P', 'G'), 25, s, true);
 	}
 }
+
+
 
 
