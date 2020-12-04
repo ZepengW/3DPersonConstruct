@@ -120,7 +120,7 @@
       </SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;WIN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)/AstraSDK/include;$(SolutionDir)/opencv/include;$(SolutionDir)/common;$(SolutionDir)glew-2.1.0/include;$(SolutionDir)glfw-3.3.2/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)/AstraSDK/include;$(SolutionDir)/opencv/include;$(SolutionDir)/common;$(SolutionDir)glew-2.1.0/include;$(SolutionDir)glfw-3.3.2/include;$(SolutionDir)jsonxx/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <SupportJustMyCode>false</SupportJustMyCode>

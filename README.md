@@ -73,3 +73,9 @@
 ## 此项目环境
 
 OpenCV 4.5
+
+jsonxx
+
+glew-2.1.0
+
+glfw-3.3.2
