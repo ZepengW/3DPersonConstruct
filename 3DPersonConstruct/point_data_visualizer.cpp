@@ -7,7 +7,7 @@
 
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods);
 void key_down_callback(GLFWwindow* window, int nKey, int nScanCode, int nAction, int nMode);
-void draw_bone(astra::Vector3f pos_r_1, astra::Vector3f pos_r_2);
+void draw_bone(std::map<astra::JointType, astra::Vector3f> jointPos_r, astra::JointType type1, astra::JointType type2);
 
 PointDataWindow::PointDataWindow(int width, int height)
 {
@@ -23,6 +23,11 @@ PointDataWindow::PointDataWindow(int width, int height)
 	//event callback
 	glfwSetMouseButtonCallback((GLFWwindow*)window, mouse_button_callback);
 	glfwSetKeyCallback((GLFWwindow*)window, key_down_callback);
+}
+
+PointDataWindow::~PointDataWindow()
+{
+	glfwDestroyWindow((GLFWwindow*)window);
 }
 
 void PointDataWindow::display(const void* pointData, const void* colorData, int w, int h)
@@ -69,46 +74,54 @@ void PointDataWindow::display_joints(const std::map<astra::JointType, astra::Vec
 	std::map<astra::JointType, astra::Vector3f> jointPos_r;
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glPointSize(20);
-	glBegin(GL_POINTS);
+	
 	auto iter = jointPositions.begin();
 	while (iter != jointPositions.end())
 	{
-		glColor3f(1.0, 0.0, 0.0);
 		float x_r = -(float)(iter->second.x - width / 2) / (width / 2);
 		float y_r = -(float)(iter->second.y - height / 2) / (height / 2);
 		float z_r = iter->second.z/6000;
 		jointPos_r[iter->first] = astra::Vector3f(x_r,y_r,z_r);
-		glVertex3f(x_r,y_r,z_r);
 		iter++;
 	}
+	
+
+	glLineWidth(10);
+	glBegin(GL_LINES);
+	glColor3f(0.0, 1.0, 0.0);
+	draw_bone(jointPos_r,astra::JointType::Head,astra::JointType::Neck);
+	draw_bone(jointPos_r,astra::JointType::Neck,astra::JointType::ShoulderSpine);
+
+	draw_bone(jointPos_r,astra::JointType::ShoulderSpine,astra::JointType::LeftShoulder);
+	draw_bone(jointPos_r,astra::JointType::LeftShoulder,astra::JointType::LeftElbow);
+	draw_bone(jointPos_r,astra::JointType::LeftElbow,astra::JointType::LeftWrist);
+	draw_bone(jointPos_r,astra::JointType::LeftWrist,astra::JointType::LeftHand);
+
+	draw_bone(jointPos_r,astra::JointType::ShoulderSpine,astra::JointType::RightShoulder);
+	draw_bone(jointPos_r,astra::JointType::RightShoulder,astra::JointType::RightElbow);
+	draw_bone(jointPos_r,astra::JointType::RightElbow,astra::JointType::RightWrist);
+	draw_bone(jointPos_r,astra::JointType::RightWrist,astra::JointType::RightHand);
+
+	draw_bone(jointPos_r,astra::JointType::ShoulderSpine,astra::JointType::MidSpine);
+	draw_bone(jointPos_r,astra::JointType::MidSpine,astra::JointType::BaseSpine);
+
+	draw_bone(jointPos_r,astra::JointType::BaseSpine,astra::JointType::LeftHip);
+	draw_bone(jointPos_r,astra::JointType::LeftHip,astra::JointType::LeftKnee);
+	draw_bone(jointPos_r,astra::JointType::LeftKnee,astra::JointType::LeftFoot);
+
+	draw_bone(jointPos_r,astra::JointType::BaseSpine,astra::JointType::RightHip);
+	draw_bone(jointPos_r,astra::JointType::RightHip,astra::JointType::RightKnee);
+	draw_bone(jointPos_r,astra::JointType::RightKnee,astra::JointType::RightFoot);
 	glEnd();
 
-	glBegin(GL_LINES);
-	glLineWidth(10);
-	glColor3f(0.0, 1.0, 0.0);
-	draw_bone(jointPos_r[astra::JointType::Head], jointPos_r[astra::JointType::Neck]);
-	draw_bone(jointPos_r[astra::JointType::Neck], jointPos_r[astra::JointType::ShoulderSpine]);
-
-	draw_bone(jointPos_r[astra::JointType::ShoulderSpine], jointPos_r[astra::JointType::LeftShoulder]);
-	draw_bone(jointPos_r[astra::JointType::LeftShoulder], jointPos_r[astra::JointType::LeftElbow]);
-	draw_bone(jointPos_r[astra::JointType::LeftElbow], jointPos_r[astra::JointType::LeftWrist]);
-	draw_bone(jointPos_r[astra::JointType::LeftWrist], jointPos_r[astra::JointType::LeftHand]);
-
-	draw_bone(jointPos_r[astra::JointType::ShoulderSpine], jointPos_r[astra::JointType::RightShoulder]);
-	draw_bone(jointPos_r[astra::JointType::RightShoulder], jointPos_r[astra::JointType::RightElbow]);
-	draw_bone(jointPos_r[astra::JointType::RightElbow], jointPos_r[astra::JointType::RightWrist]);
-	draw_bone(jointPos_r[astra::JointType::RightWrist], jointPos_r[astra::JointType::RightHand]);
-
-	draw_bone(jointPos_r[astra::JointType::ShoulderSpine], jointPos_r[astra::JointType::MidSpine]);
-	draw_bone(jointPos_r[astra::JointType::MidSpine], jointPos_r[astra::JointType::BaseSpine]);
-
-	draw_bone(jointPos_r[astra::JointType::BaseSpine], jointPos_r[astra::JointType::LeftHip]);
-	draw_bone(jointPos_r[astra::JointType::LeftHip], jointPos_r[astra::JointType::LeftKnee]);
-	draw_bone(jointPos_r[astra::JointType::LeftKnee], jointPos_r[astra::JointType::LeftFoot]);
-
-	draw_bone(jointPos_r[astra::JointType::BaseSpine], jointPos_r[astra::JointType::RightHip]);
-	draw_bone(jointPos_r[astra::JointType::RightHip], jointPos_r[astra::JointType::RightKnee]);
-	draw_bone(jointPos_r[astra::JointType::RightKnee], jointPos_r[astra::JointType::RightFoot]);
+	glBegin(GL_POINTS);
+	auto it = jointPos_r.begin();
+	while (it != jointPos_r.end())
+	{
+		glColor3f(1.0, 0, 0);
+		glVertex3f(it->second.x, it->second.y, it->second.z);
+		it++;
+	}
 	glEnd();
 
 	glFlush();
@@ -116,10 +129,13 @@ void PointDataWindow::display_joints(const std::map<astra::JointType, astra::Vec
 	glfwPollEvents();
 
 }
-void draw_bone(astra::Vector3f pos_r_1, astra::Vector3f pos_r_2)
+void draw_bone(std::map<astra::JointType, astra::Vector3f> jointPos_r, astra::JointType type1, astra::JointType type2)
 {
-	glVertex3f(pos_r_1.x, pos_r_1.y, pos_r_1.z);
-	glVertex3f(pos_r_2.x, pos_r_2.y, pos_r_2.z);
+	if (0 == jointPos_r.count(type1) ||
+		0 == jointPos_r.count(type2))
+		return;
+	glVertex3f(jointPos_r[type1].x, jointPos_r[type1].y, jointPos_r[type1].z);
+	glVertex3f(jointPos_r[type2].x, jointPos_r[type2].y, jointPos_r[type2].z);
 }
 
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)

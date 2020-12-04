@@ -39,9 +39,14 @@
 
 using namespace cv;
 
-MultiFrameListener::MultiFrameListener(int width, int height):pointDataWindow(width,height)
+MultiFrameListener::MultiFrameListener(int width, int height, bool isTrainCapture):pointDataWindow(width,height)
 {
+	this->isTrainCapture = isTrainCapture;
+	this->captureValid = !isTrainCapture;
+}
 
+MultiFrameListener::~MultiFrameListener()
+{
 }
 
 void MultiFrameListener::on_frame_ready(astra::StreamReader& reader,
@@ -52,12 +57,13 @@ void MultiFrameListener::on_frame_ready(astra::StreamReader& reader,
 	//const astra::PointFrame pointFrame = frame.get<astra::PointFrame>();
 	const astra::BodyFrame bodyFrame = frame.get<astra::BodyFrame>();
 
+	this->process_body_3d(bodyFrame, depthFrame);
 	//this->process_depth(depthFrame);
 	this->process_rgb(colorFrame);
 	//this->process_point(pointFrame);
 	//this->process_point_rgb(colorFrame, pointFrame);
 	//this->process_depth_rgb(depthFrame, colorFrame);
-	this->process_body_3d(bodyFrame,depthFrame);
+	
 	
 }
 
@@ -84,17 +90,10 @@ void MultiFrameListener::process_rgb(const astra::ColorFrame& colorFrame)
 		return;
 	int width = colorFrame.width();
 	int height = colorFrame.height();
-	int frameIndex = colorFrame.frame_index();
 
 	astra::RgbPixel* buffer_color = (astra::RgbPixel*)malloc(colorFrame.length() * sizeof(astra::RgbPixel));
 	colorFrame.copy_to(buffer_color);
 	uint8_t* data = (uint8_t*)malloc(width * height * 3 * sizeof(uint8_t));
-	//for (size_t i = 0; i < width * height; i++)
-	//{
-	//	data[3 * i] = buffer_color[i].b;
-	//	data[3 * i + 1] = buffer_color[i].g;
-	//	data[3 * i + 2] = buffer_color[i].r;
-	//}
 	for (size_t j = 0; j < height; j++)
 	{
 		for (size_t i = 0; i < width; i++)
@@ -106,7 +105,7 @@ void MultiFrameListener::process_rgb(const astra::ColorFrame& colorFrame)
 	}
 
 	Mat frame = Mat(height, width, CV_8UC3, (uint8_t *)data);
-	write_video(this->videoRgbOutput,frame, Size(width, height),"RGB");
+	write_video(this->videoRgbOutput,frame, Size(width, height), this->captureValid);
 	cv::imshow("rgb", frame);
 	waitKey(10);
 	free(buffer_color);
@@ -168,15 +167,25 @@ void MultiFrameListener::process_body_3d(const astra::BodyFrame& bodyFrame,const
 	if (!bodyFrame.is_valid()||!depthFrame.is_valid() || bodyFrame.info().width() == 0 || bodyFrame.info().height() == 0)
 		return;
 	const auto& bodies = bodyFrame.bodies();
+	if (bodies.empty())
+	{
+		this->captureValid = !(this->isTrainCapture);
+		this->jointPosOutput.close();
+		return;
+	}
+	else if(!this->captureValid)
+	{
+		this->captureValid = true;
+		this->bodyFrameBeginIdx = bodyFrame.frame_index();
+	}
 	int width = depthFrame.width();
 	int height = depthFrame.height();
+	jsonxx::json j;
+	j["FrameId"] = bodyFrame.frame_index() - this->bodyFrameBeginIdx;
 	for (auto& body : bodies)
 	{
-		jsonxx::json j;
-		j["FrameId"] = bodyFrame.frame_index();
 		std::map<astra::JointType, astra::Vector3f> jointPositions;
-		printf("Processing frame #%d body %d\n",
-			bodyFrame.frame_index(), body.id());
+		//printf("Processing frame #%d body %d\n",bodyFrame.frame_index(), body.id());
 		for (auto& joint : body.joints())
 		{
 			astra::JointType type = joint.type();
@@ -193,18 +202,24 @@ void MultiFrameListener::process_body_3d(const astra::BodyFrame& bodyFrame,const
 }
 
 
-void MultiFrameListener::write_video(VideoWriter &writer,cv::Mat frame, cv::Size s,std::string mode)
+void MultiFrameListener::write_video(VideoWriter &writer,cv::Mat frame, cv::Size s, bool valid)
 {
 	if (writer.isOpened())
+	{
+		if (!valid)
+		{
+			writer.release();
+		}
 		writer.write(frame);
-	else
+	}
+	else if(valid)
 	{
 		time_t tt = time(NULL);
 		tm* t = localtime(&tt);
 		char filename[20];
 		snprintf(filename, 15, "%04d%02d%02d%02d%02d%02d",
 			t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
-		std::cout << "Create video file. name:" << filename;
+		std::cout << "Create video file. name:" << filename<<".avi" << std::endl;
 
 		if (-1 == access("./output", 0))
 		{
@@ -215,7 +230,7 @@ void MultiFrameListener::write_video(VideoWriter &writer,cv::Mat frame, cv::Size
 			mkdir("./output", 0777);
 #endif // LINUX
 		}
-		writer.open("./output/" + std::string(filename) + mode+".avi", VideoWriter::fourcc('M', 'J', 'P', 'G'), 25, s, true);
+		writer.open("./output/" + std::string(filename)+".avi", VideoWriter::fourcc('M', 'J', 'P', 'G'), 25, s, true);
 	}
 }
 
@@ -232,7 +247,7 @@ void MultiFrameListener::write_body(std::ofstream& f, jsonxx::json j)
 		char filename[20];
 		snprintf(filename, 15, "%04d%02d%02d%02d%02d%02d",
 			t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
-		std::cout << "Create video file. name:" << filename;
+		std::cout << "Create joint file. name:" << filename<<".json" << std::endl;
 
 		if (-1 == access("./output", 0))
 		{

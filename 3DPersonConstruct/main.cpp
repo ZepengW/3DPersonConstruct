@@ -1,7 +1,7 @@
 ﻿#include "camera.h"
 #include <key_handler.h>
 #include <time.h>
-#define MAX_TIME_FOR_NO_LICENSE 18000	//30min
+#define MAX_TIME_FOR_NO_LICENSE 1200	//20min
 std::string resInfo[3] =
 {
 	"SUCCESS",
@@ -14,7 +14,8 @@ int process(const char* licenseString)
 	if (ASTRA_STATUS_SUCCESS != astra::initialize())
 		return 1;
 	// license for skeleton
-	bool isActivated = orbbec_body_tracking_set_license(licenseString) == ASTRA_STATUS_SUCCESS ? true : false;
+	orbbec_body_tracking_set_license(licenseString);
+	bool isActivated =  false;
 	int res = 2;
 	bool isLicenseTimeout = false;
 	//30min if no license
@@ -23,7 +24,7 @@ int process(const char* licenseString)
 	astra::StreamSet streamSet;
 	astra::StreamReader reader = streamSet.create_reader();
 
-	MultiFrameListener listener(640, 480);
+	MultiFrameListener listener(640, 480, true);
 
 
 	reader.stream<astra::ColorStream>().start();
@@ -40,7 +41,8 @@ int process(const char* licenseString)
 
 	while (!isLicenseTimeout)
 	{
-		isLicenseTimeout = (clock() - start >= MAX_TIME_FOR_NO_LICENSE) ? true : false;
+		int t = (clock() - start)/CLOCKS_PER_SEC;
+		isLicenseTimeout = (t >= MAX_TIME_FOR_NO_LICENSE) ? true : false;
 		astra_update();
 	}
 	reader.remove_listener(listener);

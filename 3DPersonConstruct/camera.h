@@ -8,7 +8,8 @@
 class MultiFrameListener : public astra::FrameListener
 {
 public:
-    MultiFrameListener(int width,int length);
+    MultiFrameListener(int width,int length, bool isTrainCapture);
+    ~MultiFrameListener();
 private:
 
     virtual void on_frame_ready(astra::StreamReader& reader,
@@ -19,7 +20,7 @@ private:
     void process_point_rgb(const astra::ColorFrame& colorFrame, const astra::PointFrame& pointFrame);
     void process_depth_rgb(const astra::DepthFrame& depthFrame, const astra::ColorFrame& colorFrame);
     void process_body_3d(const astra::BodyFrame& bodyFrame, const astra::DepthFrame& deepthFrame);
-    void write_video(cv::VideoWriter &writer,cv::Mat frame,cv::Size s,std::string mode);
+    void write_video(cv::VideoWriter &writer,cv::Mat frame,cv::Size s, bool valid);
     void write_body(std::ofstream& f, jsonxx::json j);
     
 
@@ -31,6 +32,11 @@ private:
     cv::VideoWriter videoRgbOutput;
     cv::VideoWriter vidroDepthOutput;
     std::ofstream jointPosOutput;
+
+    bool isTrainCapture;
+    bool captureValid;
+
+    int bodyFrameBeginIdx = 0;
 
     PointDataWindow pointDataWindow;
 };
