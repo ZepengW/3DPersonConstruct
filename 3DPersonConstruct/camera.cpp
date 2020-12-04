@@ -24,9 +24,11 @@
 #include <GLFW/glfw3.h>
 
 
+
 #ifdef WIN
 #include <io.h>
 #include <direct.h>
+#include <windows.data.json.h>
 #endif // WIN
 #ifdef LINUX
 #include <unistd.h>
@@ -37,27 +39,29 @@
 
 using namespace cv;
 
-SampleFrameListener::SampleFrameListener(int width, int height):pointDataWindow(width,height)
+MultiFrameListener::MultiFrameListener(int width, int height):pointDataWindow(width,height)
 {
 
 }
 
-void SampleFrameListener::on_frame_ready(astra::StreamReader& reader,
+void MultiFrameListener::on_frame_ready(astra::StreamReader& reader,
 	astra::Frame& frame)
 {
-	//const astra::DepthFrame depthFrame = frame.get<astra::DepthFrame>();
+	const astra::DepthFrame depthFrame = frame.get<astra::DepthFrame>();
 	const astra::ColorFrame colorFrame = frame.get<astra::ColorFrame>();
-	const astra::PointFrame pointFrame = frame.get<astra::PointFrame>();
+	//const astra::PointFrame pointFrame = frame.get<astra::PointFrame>();
+	const astra::BodyFrame bodyFrame = frame.get<astra::BodyFrame>();
 
 	//this->process_depth(depthFrame);
 	this->process_rgb(colorFrame);
-	this->process_point(pointFrame);
-	this->process_point_rgb(colorFrame, pointFrame);
+	//this->process_point(pointFrame);
+	//this->process_point_rgb(colorFrame, pointFrame);
 	//this->process_depth_rgb(depthFrame, colorFrame);
+	this->process_body_3d(bodyFrame,depthFrame);
 	
 }
 
-void SampleFrameListener::process_depth(const astra::DepthFrame& depthFrame)
+void MultiFrameListener::process_depth(const astra::DepthFrame& depthFrame)
 {
 	if (!depthFrame.is_valid())
 		return;
@@ -74,7 +78,7 @@ void SampleFrameListener::process_depth(const astra::DepthFrame& depthFrame)
 
 }
 
-void SampleFrameListener::process_rgb(const astra::ColorFrame& colorFrame)
+void MultiFrameListener::process_rgb(const astra::ColorFrame& colorFrame)
 {
 	if (!colorFrame.is_valid())
 		return;
@@ -85,25 +89,31 @@ void SampleFrameListener::process_rgb(const astra::ColorFrame& colorFrame)
 	astra::RgbPixel* buffer_color = (astra::RgbPixel*)malloc(colorFrame.length() * sizeof(astra::RgbPixel));
 	colorFrame.copy_to(buffer_color);
 	uint8_t* data = (uint8_t*)malloc(width * height * 3 * sizeof(uint8_t));
-	for (size_t i = 0; i < width * height; i++)
+	//for (size_t i = 0; i < width * height; i++)
+	//{
+	//	data[3 * i] = buffer_color[i].b;
+	//	data[3 * i + 1] = buffer_color[i].g;
+	//	data[3 * i + 2] = buffer_color[i].r;
+	//}
+	for (size_t j = 0; j < height; j++)
 	{
-		if (i == ((width * (height / 2.0f)) + (width / 2.0f)))
+		for (size_t i = 0; i < width; i++)
 		{
-			//std::cout << i << std::endl;
+			data[3 * (i+width*j)] = buffer_color[(width-i + width * j)].b;
+			data[3 * (i + width * j) + 1] = buffer_color[(width - i + width * j)].g;
+			data[3 * (i + width * j) + 2] = buffer_color[(width - i + width * j)].r;
 		}
-		data[3 * i] = buffer_color[i].b;
-		data[3 * i + 1] = buffer_color[i].g;
-		data[3 * i + 2] = buffer_color[i].r;
 	}
+
 	Mat frame = Mat(height, width, CV_8UC3, (uint8_t *)data);
-	//write_video(this->videoRgbOutput,frame, Size(width, height),"RGB");
+	write_video(this->videoRgbOutput,frame, Size(width, height),"RGB");
 	cv::imshow("rgb", frame);
 	waitKey(10);
 	free(buffer_color);
 	free(data);
 }
 
-void SampleFrameListener::process_point(const astra::PointFrame& pointFrame)
+void MultiFrameListener::process_point(const astra::PointFrame& pointFrame)
 {
 	if (!pointFrame.is_valid())
 		return;
@@ -126,7 +136,7 @@ void SampleFrameListener::process_point(const astra::PointFrame& pointFrame)
 	free(data);
 }
 
-void SampleFrameListener::process_point_rgb(const astra::ColorFrame& colorFrame, const astra::PointFrame& pointFrame)
+void MultiFrameListener::process_point_rgb(const astra::ColorFrame& colorFrame, const astra::PointFrame& pointFrame)
 {
 	if((!colorFrame.is_valid())||
 		(!pointFrame.is_valid()))
@@ -140,7 +150,7 @@ void SampleFrameListener::process_point_rgb(const astra::ColorFrame& colorFrame,
 	this->pointDataWindow.display(pointData,colorData,width,height);
 }
 
-void SampleFrameListener::process_depth_rgb(const astra::DepthFrame& depthFrame, const astra::ColorFrame& colorFrame)
+void MultiFrameListener::process_depth_rgb(const astra::DepthFrame& depthFrame, const astra::ColorFrame& colorFrame)
 {
 	if ((!depthFrame.is_valid())||
 		(!colorFrame.is_valid()))
@@ -153,8 +163,37 @@ void SampleFrameListener::process_depth_rgb(const astra::DepthFrame& depthFrame,
 	this->pointDataWindow.display(depthData, colorData, width, height);
 }
 
+void MultiFrameListener::process_body_3d(const astra::BodyFrame& bodyFrame,const astra::DepthFrame& depthFrame)
+{
+	if (!bodyFrame.is_valid()||!depthFrame.is_valid() || bodyFrame.info().width() == 0 || bodyFrame.info().height() == 0)
+		return;
+	const auto& bodies = bodyFrame.bodies();
+	int width = depthFrame.width();
+	int height = depthFrame.height();
+	for (auto& body : bodies)
+	{
+		jsonxx::json j;
+		j["FrameId"] = bodyFrame.frame_index();
+		std::map<astra::JointType, astra::Vector3f> jointPositions;
+		printf("Processing frame #%d body %d\n",
+			bodyFrame.frame_index(), body.id());
+		for (auto& joint : body.joints())
+		{
+			astra::JointType type = joint.type();
+			const auto& pose = joint.depth_position();
+			if (pose.x > width || pose.y > height)
+				continue;
+			int16_t z = depthFrame.data()[(int)pose.y * width + (int)pose.x];
+			jointPositions[type] = astra::Vector3f(pose.x, pose.y, z);
+			j["body-"+std::to_string(body.id())][std::to_string((int)type)] = { pose.x,pose.y,z };
+		}
+		this->pointDataWindow.display_joints(jointPositions);
+		this->write_body(this->jointPosOutput, j);
+	}
+}
 
-void SampleFrameListener::write_video(VideoWriter &writer,cv::Mat frame, cv::Size s,std::string mode)
+
+void MultiFrameListener::write_video(VideoWriter &writer,cv::Mat frame, cv::Size s,std::string mode)
 {
 	if (writer.isOpened())
 		writer.write(frame);
@@ -177,6 +216,35 @@ void SampleFrameListener::write_video(VideoWriter &writer,cv::Mat frame, cv::Siz
 #endif // LINUX
 		}
 		writer.open("./output/" + std::string(filename) + mode+".avi", VideoWriter::fourcc('M', 'J', 'P', 'G'), 25, s, true);
+	}
+}
+
+void MultiFrameListener::write_body(std::ofstream& f, jsonxx::json j)
+{
+	if (f.is_open())
+	{
+		f << std::setw(4)<<j <<std::endl;
+	}
+	else
+	{
+		time_t tt = time(NULL);
+		tm* t = localtime(&tt);
+		char filename[20];
+		snprintf(filename, 15, "%04d%02d%02d%02d%02d%02d",
+			t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
+		std::cout << "Create video file. name:" << filename;
+
+		if (-1 == access("./output", 0))
+		{
+#ifdef WIN
+			mkdir("./output");
+#endif // WIN
+#ifdef LINUX
+			mkdir("./output", 0777);
+#endif // LINUX
+		}
+		f.open("./output/" + std::string(filename)+".json",std::ios::out|std::ios::trunc);
+
 	}
 }
 
