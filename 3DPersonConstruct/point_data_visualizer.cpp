@@ -69,7 +69,8 @@ void PointDataWindow::display(const void* pointData, const void* colorData, int 
 	glfwPollEvents();
 }
 
-void PointDataWindow::display_joints(const std::map<astra::JointType, astra::Vector3f> jointPositions)
+void PointDataWindow::display_joints(const std::map<astra::JointType, astra::Vector3f> jointPositions,
+	std::map<astra::JointType, astra::JointStatus> jointStatus)
 {
 	std::map<astra::JointType, astra::Vector3f> jointPos_r;
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -78,9 +79,20 @@ void PointDataWindow::display_joints(const std::map<astra::JointType, astra::Vec
 	auto iter = jointPositions.begin();
 	while (iter != jointPositions.end())
 	{
-		float x_r = -(float)(iter->second.x - width / 2) / (width / 2);
-		float y_r = -(float)(iter->second.y - height / 2) / (height / 2);
-		float z_r = iter->second.z/6000;
+		float x_r;
+		float y_r;
+		float z_r;
+		if (jointStatus[iter->first] == astra::JointStatus::NotTracked)
+		{
+			iter++;
+			continue;
+		}
+		else
+		{
+			x_r = -(float)(iter->second.x - width / 2) / (width / 2);
+			y_r = -(float)(iter->second.y - height / 2) / (height / 2);
+			z_r = iter->second.z / 6000;
+		}
 		jointPos_r[iter->first] = astra::Vector3f(x_r,y_r,z_r);
 		iter++;
 	}
@@ -118,7 +130,10 @@ void PointDataWindow::display_joints(const std::map<astra::JointType, astra::Vec
 	auto it = jointPos_r.begin();
 	while (it != jointPos_r.end())
 	{
-		glColor3f(1.0, 0, 0);
+		if (astra::JointStatus::LowConfidence == jointStatus[it->first])
+			glColor3f(0, 0, 1.0);
+		else if (astra::JointStatus::Tracked == jointStatus[it->first])
+			glColor3f(1.0, 0, 0);
 		glVertex3f(it->second.x, it->second.y, it->second.z);
 		it++;
 	}

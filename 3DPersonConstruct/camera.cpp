@@ -47,6 +47,7 @@ MultiFrameListener::MultiFrameListener(int width, int height, bool isTrainCaptur
 
 MultiFrameListener::~MultiFrameListener()
 {
+	this->save_close_body_json();
 }
 
 void MultiFrameListener::on_frame_ready(astra::StreamReader& reader,
@@ -54,15 +55,10 @@ void MultiFrameListener::on_frame_ready(astra::StreamReader& reader,
 {
 	const astra::DepthFrame depthFrame = frame.get<astra::DepthFrame>();
 	const astra::ColorFrame colorFrame = frame.get<astra::ColorFrame>();
-	//const astra::PointFrame pointFrame = frame.get<astra::PointFrame>();
 	const astra::BodyFrame bodyFrame = frame.get<astra::BodyFrame>();
 
 	this->process_body_3d(bodyFrame, depthFrame);
-	//this->process_depth(depthFrame);
 	this->process_rgb(colorFrame);
-	//this->process_point(pointFrame);
-	//this->process_point_rgb(colorFrame, pointFrame);
-	//this->process_depth_rgb(depthFrame, colorFrame);
 	
 	
 }
@@ -170,7 +166,7 @@ void MultiFrameListener::process_body_3d(const astra::BodyFrame& bodyFrame,const
 	if (bodies.empty())
 	{
 		this->captureValid = !(this->isTrainCapture);
-		this->jointPosOutput.close();
+		this->save_close_body_json();
 		return;
 	}
 	else if(!this->captureValid)
@@ -185,19 +181,22 @@ void MultiFrameListener::process_body_3d(const astra::BodyFrame& bodyFrame,const
 	for (auto& body : bodies)
 	{
 		std::map<astra::JointType, astra::Vector3f> jointPositions;
-		//printf("Processing frame #%d body %d\n",bodyFrame.frame_index(), body.id());
+		std::map<astra::JointType, astra::JointStatus> jointStatus;
+
 		for (auto& joint : body.joints())
 		{
 			astra::JointType type = joint.type();
+			astra::JointStatus status = joint.status();
 			const auto& pose = joint.depth_position();
 			if (pose.x > width || pose.y > height)
 				continue;
 			int16_t z = depthFrame.data()[(int)pose.y * width + (int)pose.x];
 			jointPositions[type] = astra::Vector3f(pose.x, pose.y, z);
-			j["body-"+std::to_string(body.id())][std::to_string((int)type)] = { pose.x,pose.y,z };
+			jointStatus[type] = status;
+			j["body-"+std::to_string(body.id())][std::to_string((int)type)] = { int(pose.x),int(pose.y),z,(int)status};
 		}
-		this->pointDataWindow.display_joints(jointPositions);
-		this->write_body(this->jointPosOutput, j);
+		this->pointDataWindow.display_joints(jointPositions,jointStatus);
+		this->write_body(j);
 	}
 }
 
@@ -234,11 +233,11 @@ void MultiFrameListener::write_video(VideoWriter &writer,cv::Mat frame, cv::Size
 	}
 }
 
-void MultiFrameListener::write_body(std::ofstream& f, jsonxx::json j)
+void MultiFrameListener::write_body(jsonxx::json j)
 {
-	if (f.is_open())
+	if (this->jointPosOutput.is_open())
 	{
-		f << std::setw(4)<<j <<std::endl;
+		this->jointJsonVec.push_back(j);
 	}
 	else
 	{
@@ -258,8 +257,19 @@ void MultiFrameListener::write_body(std::ofstream& f, jsonxx::json j)
 			mkdir("./output", 0777);
 #endif // LINUX
 		}
-		f.open("./output/" + std::string(filename)+".json",std::ios::out|std::ios::trunc);
+		this->jointPosOutput.open("./output/" + std::string(filename)+".json",std::ios::out|std::ios::trunc);
+		this->jointJsonVec.clear();
+		std::cout << "1";
+	}
+}
 
+void MultiFrameListener::save_close_body_json()
+{
+	if (this->jointPosOutput.is_open())
+	{
+		this->jointPosOutput <<std::setw(4)<< this->jointJsonVec << std::endl;
+		this->jointPosOutput.close();
+		this->jointJsonVec.clear();
 	}
 }
 

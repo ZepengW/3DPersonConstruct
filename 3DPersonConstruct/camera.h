@@ -21,7 +21,9 @@ private:
     void process_depth_rgb(const astra::DepthFrame& depthFrame, const astra::ColorFrame& colorFrame);
     void process_body_3d(const astra::BodyFrame& bodyFrame, const astra::DepthFrame& deepthFrame);
     void write_video(cv::VideoWriter &writer,cv::Mat frame,cv::Size s, bool valid);
-    void write_body(std::ofstream& f, jsonxx::json j);
+    void write_body(jsonxx::json j);
+    void save_close_body_json();
+    std::vector<jsonxx::json> jointJsonVec;
     
 
     using duration_type = std::chrono::duration<float>;
