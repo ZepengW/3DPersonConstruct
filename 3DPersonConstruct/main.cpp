@@ -13,6 +13,7 @@ int process(const char* licenseString)
 {
 	if (ASTRA_STATUS_SUCCESS != astra::initialize())
 		return 1;
+	
 	// license for skeleton
 	orbbec_body_tracking_set_license(licenseString);
 	bool isActivated =  false;
@@ -23,12 +24,11 @@ int process(const char* licenseString)
 
 	astra::StreamSet streamSet;
 	astra::StreamReader reader = streamSet.create_reader();
-
 	MultiFrameListener listener(640, 480, true);
 
+	if (reader.stream<astra::DepthStream>().is_available() == false)
+		return -1;
 
-	reader.stream<astra::ColorStream>().start();
-	reader.stream<astra::PointStream>().start();
 	auto mode = reader.stream<astra::DepthStream>().mode();
 	mode.set_width(640);
 	mode.set_height(480);
@@ -36,6 +36,7 @@ int process(const char* licenseString)
 	reader.stream<astra::DepthStream>().start();
 	reader.stream<astra::BodyStream>().set_skeleton_profile(astra::SkeletonProfile::Full);
 	reader.stream<astra::BodyStream>().start();
+	reader.stream<astra::ColorStream>().start();
 
 	reader.add_listener(listener);
 
@@ -58,6 +59,11 @@ int main(int argc, char** argv)
 	{
 		std::cout << "capture begin"<<std::endl;
 		int res = process("<INPUT LICENSE>");
+		if (-1 == res)
+		{
+			std::cout << "can't get stream. maybe the device is disconnected"<<std::endl;
+			return 0;
+		}
 		std::cout << "capture finish because of [" << resInfo[res] << "]"<<std::endl;
 		isContinue = (res == 100) ? false : true;
 	}
