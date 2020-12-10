@@ -39,7 +39,7 @@
 
 using namespace cv;
 
-MultiFrameListener::MultiFrameListener(int width, int height, bool isTrainCapture):pointDataWindow(width,height)
+MultiFrameListener::MultiFrameListener(int width, int height, bool isTrainCapture)//:pointDataWindow(width,height)
 {
 	this->isTrainCapture = isTrainCapture;
 	this->captureValid = !isTrainCapture;
@@ -47,7 +47,7 @@ MultiFrameListener::MultiFrameListener(int width, int height, bool isTrainCaptur
 
 MultiFrameListener::~MultiFrameListener()
 {
-	this->save_close_body_json();
+	this->save_close();
 }
 
 void MultiFrameListener::on_frame_ready(astra::StreamReader& reader,
@@ -55,11 +55,11 @@ void MultiFrameListener::on_frame_ready(astra::StreamReader& reader,
 {
 	const astra::DepthFrame depthFrame = frame.get<astra::DepthFrame>();
 	const astra::ColorFrame colorFrame = frame.get<astra::ColorFrame>();
-	const astra::BodyFrame bodyFrame = frame.get<astra::BodyFrame>();
+	//const astra::BodyFrame bodyFrame = frame.get<astra::BodyFrame>();
 
-	this->process_body_3d(bodyFrame, depthFrame);
-	this->process_rgb(colorFrame);
-	
+	//this->process_body_3d(bodyFrame, depthFrame);
+	//this->process_rgb(colorFrame);
+	this->process_rgb_body3d(colorFrame, depthFrame);
 	
 }
 
@@ -101,7 +101,7 @@ void MultiFrameListener::process_rgb(const astra::ColorFrame& colorFrame)
 	}
 
 	Mat frame = Mat(height, width, CV_8UC3, (uint8_t *)data);
-	write_video(this->videoRgbOutput,frame, Size(width, height), this->captureValid);
+	write_video(this->videoRgbOutput,frame, Size(width, height), this->captureValid, "");
 	cv::imshow("rgb", frame);
 	waitKey(10);
 	free(buffer_color);
@@ -142,7 +142,7 @@ void MultiFrameListener::process_point_rgb(const astra::ColorFrame& colorFrame, 
 	const astra::Vector3f* pointData = pointFrame.data();
 	const astra::RgbPixel* colorData = colorFrame.data();
 	
-	this->pointDataWindow.display(pointData,colorData,width,height);
+	//this->pointDataWindow.display(pointData,colorData,width,height);
 }
 
 void MultiFrameListener::process_depth_rgb(const astra::DepthFrame& depthFrame, const astra::ColorFrame& colorFrame)
@@ -155,7 +155,7 @@ void MultiFrameListener::process_depth_rgb(const astra::DepthFrame& depthFrame, 
 
 	const int16_t* depthData = depthFrame.data();
 	const astra::RgbPixel* colorData = colorFrame.data();
-	this->pointDataWindow.display(depthData, colorData, width, height);
+	//this->pointDataWindow.display(depthData, colorData, width, height);
 }
 
 void MultiFrameListener::process_body_3d(const astra::BodyFrame& bodyFrame,const astra::DepthFrame& depthFrame)
@@ -166,7 +166,7 @@ void MultiFrameListener::process_body_3d(const astra::BodyFrame& bodyFrame,const
 	if (bodies.empty())
 	{
 		this->captureValid = !(this->isTrainCapture);
-		this->save_close_body_json();
+		this->save_close();
 		return;
 	}
 	else if(!this->captureValid)
@@ -195,20 +195,75 @@ void MultiFrameListener::process_body_3d(const astra::BodyFrame& bodyFrame,const
 			jointStatus[type] = status;
 			j["body-"+std::to_string(body.id())][std::to_string((int)type)] = { int(pose.x),int(pose.y),z,(int)status};
 		}
-		this->pointDataWindow.display_joints(jointPositions,jointStatus);
+		//this->pointDataWindow.display_joints(jointPositions,jointStatus);
 		this->write_body(j);
 	}
 }
 
+void MultiFrameListener::process_rgb_body3d(const astra::ColorFrame& colorFrame, const astra::DepthFrame& depthFrame)
+{
+	if (!colorFrame.is_valid() ||
+		!depthFrame.is_valid())
+		return;
+	int width = colorFrame.width();
+	int height = colorFrame.height();
 
-void MultiFrameListener::write_video(VideoWriter &writer,cv::Mat frame, cv::Size s, bool valid)
+	const int16_t* depthData = depthFrame.data();
+	//convert rgb stream to cv::Mat
+	const astra::RgbPixel* colorData = colorFrame.data();
+	uint8_t* dataRgb = (uint8_t*)malloc(width * height * 3 * sizeof(uint8_t));
+	for (int i = 0; i < width * height; i++)
+	{
+		dataRgb[3 * i] = colorData[i].b;
+		dataRgb[3 * i + 1] = colorData[i].g;
+		dataRgb[3 * i + 2] = colorData[i].r;
+	}
+	Mat frameRgb = Mat(height, width, CV_8UC3, (uint8_t*)dataRgb);
+	//get framewithjoints and jointsArray with Openpose
+	op::Array<float> jointsArray_2d;
+	this->jointByOpenpose.getJointsFromRgb(frameRgb, frameRgb, jointsArray_2d);
+	cv::imshow("rgb with joints", frameRgb);
+	waitKey(10);
+	//don't save video and joints if mode is train data capture and not detect person
+	if (jointsArray_2d.empty())
+	{
+		this->captureValid = !(this->isTrainCapture);
+		this->save_close();
+		return;
+	}
+	if (this->captureValid == false)
+	{
+		this->captureValid = true;
+		this->bodyFrameBeginIdx = depthFrame.frame_index();
+	}
+	this->write_video(this->videoRgbJointsOutput, frameRgb, Size(width, height), this->captureValid, "RgbJoints");
+	//convert 2d joints to 3d joints by depthFrame
+	jsonxx::json j;
+	j["FrameId"] = depthFrame.frame_index() - this->bodyFrameBeginIdx;
+	for (int i = 0; i < 18; i++)
+	{
+		int x_i = jointsArray_2d[i * 3];
+		int y_i = jointsArray_2d[i * 3 + 1];
+		int z_i = depthData[y_i * width + x_i];
+		if (i == 7)
+		{
+			std::cout << z_i << std::endl;
+		}
+		float score = jointsArray_2d[i * 3 + 2];
+		j["body"][std::to_string(i)] = {x_i,y_i,z_i,score };
+	}
+	this->write_body(j);
+
+	
+
+
+}
+
+
+void MultiFrameListener::write_video(VideoWriter &writer,cv::Mat frame, cv::Size s, bool valid, std::string suffixLabel)
 {
 	if (writer.isOpened())
 	{
-		if (!valid)
-		{
-			writer.release();
-		}
 		writer.write(frame);
 	}
 	else if(valid)
@@ -229,7 +284,7 @@ void MultiFrameListener::write_video(VideoWriter &writer,cv::Mat frame, cv::Size
 			mkdir("./output", 0777);
 #endif // LINUX
 		}
-		writer.open("./output/" + std::string(filename)+".avi", VideoWriter::fourcc('M', 'J', 'P', 'G'), 25, s, true);
+		writer.open("./output/" + std::string(filename)+suffixLabel+".avi", VideoWriter::fourcc('M', 'J', 'P', 'G'), 25, s, true);
 	}
 }
 
@@ -259,11 +314,10 @@ void MultiFrameListener::write_body(jsonxx::json j)
 		}
 		this->jointPosOutput.open("./output/" + std::string(filename)+".json",std::ios::out|std::ios::trunc);
 		this->jointJsonVec.clear();
-		std::cout << "1";
 	}
 }
 
-void MultiFrameListener::save_close_body_json()
+void MultiFrameListener::save_close()
 {
 	if (this->jointPosOutput.is_open())
 	{
@@ -271,6 +325,10 @@ void MultiFrameListener::save_close_body_json()
 		this->jointPosOutput.close();
 		this->jointJsonVec.clear();
 	}
+	if (this->videoRgbOutput.isOpened())
+		this->videoRgbOutput.release();
+	if (this->videoRgbJointsOutput.isOpened())
+		this->videoRgbJointsOutput.release();
 }
 
 

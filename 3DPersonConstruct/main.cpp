@@ -34,8 +34,8 @@ int process(const char* licenseString)
 	mode.set_height(480);
 	reader.stream<astra::DepthStream>().set_mode(mode);
 	reader.stream<astra::DepthStream>().start();
-	reader.stream<astra::BodyStream>().set_skeleton_profile(astra::SkeletonProfile::Full);
-	reader.stream<astra::BodyStream>().start();
+	//reader.stream<astra::BodyStream>().set_skeleton_profile(astra::SkeletonProfile::Full);
+	//reader.stream<astra::BodyStream>().start();
 	reader.stream<astra::ColorStream>().start();
 
 	reader.add_listener(listener);

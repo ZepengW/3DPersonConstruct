@@ -20,12 +20,18 @@
     <ClCompile Include="point_data_visualizer.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="joint_by_openpose.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="camera.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="point_data_visualizer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="joint_by_openpose.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

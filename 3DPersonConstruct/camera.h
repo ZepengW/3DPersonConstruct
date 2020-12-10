@@ -4,6 +4,7 @@
 #include <fstream>
 #include "point_data_visualizer.h"
 #include <jsonxx/json.hpp>
+#include "joint_by_openpose.h"
 
 class MultiFrameListener : public astra::FrameListener
 {
@@ -20,9 +21,10 @@ private:
     void process_point_rgb(const astra::ColorFrame& colorFrame, const astra::PointFrame& pointFrame);
     void process_depth_rgb(const astra::DepthFrame& depthFrame, const astra::ColorFrame& colorFrame);
     void process_body_3d(const astra::BodyFrame& bodyFrame, const astra::DepthFrame& deepthFrame);
-    void write_video(cv::VideoWriter &writer,cv::Mat frame,cv::Size s, bool valid);
+    void process_rgb_body3d(const astra::ColorFrame& colorFrame, const astra::DepthFrame& depthFrame);
+    void write_video(cv::VideoWriter &writer,cv::Mat frame,cv::Size s, bool valid, std::string suffixLabel="");
     void write_body(jsonxx::json j);
-    void save_close_body_json();
+    void save_close();
     std::vector<jsonxx::json> jointJsonVec;
     
 
@@ -32,13 +34,15 @@ private:
     std::chrono::time_point<clock_type> lastTimepoint_{ clock_type::now() };
 
     cv::VideoWriter videoRgbOutput;
-    cv::VideoWriter vidroDepthOutput;
+    cv::VideoWriter videoRgbJointsOutput;
     std::ofstream jointPosOutput;
+
+    JointByOpenpose jointByOpenpose;
 
     bool isTrainCapture;
     bool captureValid;
 
     int bodyFrameBeginIdx = 0;
 
-    PointDataWindow pointDataWindow;
+    //PointDataWindow pointDataWindow;
 };
