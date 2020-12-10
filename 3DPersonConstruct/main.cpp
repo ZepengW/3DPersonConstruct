@@ -1,7 +1,9 @@
 ﻿#include "camera.h"
-#include <key_handler.h>
 #include <time.h>
 #define MAX_TIME_FOR_NO_LICENSE 1200	//20min
+
+#define WIDTH 640
+#define HEIGHT 480
 std::string resInfo[3] =
 {
 	"SUCCESS",
@@ -24,18 +26,22 @@ int process(const char* licenseString)
 
 	astra::StreamSet streamSet;
 	astra::StreamReader reader = streamSet.create_reader();
-	MultiFrameListener listener(640, 480, true);
+	MultiFrameListener listener(WIDTH, HEIGHT, true);
 
 	if (reader.stream<astra::DepthStream>().is_available() == false)
 		return -1;
 
 	auto mode = reader.stream<astra::DepthStream>().mode();
-	mode.set_width(640);
-	mode.set_height(480);
+	mode.set_width(WIDTH);
+	mode.set_height(HEIGHT);
 	reader.stream<astra::DepthStream>().set_mode(mode);
 	reader.stream<astra::DepthStream>().start();
 	//reader.stream<astra::BodyStream>().set_skeleton_profile(astra::SkeletonProfile::Full);
 	//reader.stream<astra::BodyStream>().start();
+	auto mode_rgb = reader.stream<astra::ColorStream>().mode();
+	mode_rgb.set_width(WIDTH);
+	mode_rgb.set_height(HEIGHT);
+	reader.stream<astra::ColorStream>().set_mode(mode_rgb);
 	reader.stream<astra::ColorStream>().start();
 
 	reader.add_listener(listener);

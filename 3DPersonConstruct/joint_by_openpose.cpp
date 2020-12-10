@@ -41,20 +41,20 @@ void configureWrapper(op::Wrapper& opWrapper)
             op::String(FLAGS_prototxt_path), op::String(FLAGS_caffemodel_path),
             (float)FLAGS_upsampling_ratio, enableGoogleLogging };
         opWrapper.configure(wrapperStructPose);
-        // Extra functionality configuration (use op::WrapperStructExtra{} to disable it)
-        const op::WrapperStructExtra wrapperStructExtra{
-            FLAGS_3d, FLAGS_3d_min_views, FLAGS_identification, FLAGS_tracking, FLAGS_ik_threads };
-        opWrapper.configure(wrapperStructExtra);
-        // Output (comment or use default argument to disable any output)
-        const op::WrapperStructOutput wrapperStructOutput{
-            FLAGS_cli_verbose, op::String(FLAGS_write_keypoint), op::stringToDataFormat(FLAGS_write_keypoint_format),
-            op::String(FLAGS_write_json), op::String(FLAGS_write_coco_json), FLAGS_write_coco_json_variants,
-            FLAGS_write_coco_json_variant, op::String(FLAGS_write_images), op::String(FLAGS_write_images_format),
-            op::String(FLAGS_write_video), FLAGS_write_video_fps, FLAGS_write_video_with_audio,
-            op::String(FLAGS_write_heatmaps), op::String(FLAGS_write_heatmaps_format), op::String(FLAGS_write_video_3d),
-            op::String(FLAGS_write_video_adam), op::String(FLAGS_write_bvh), op::String(FLAGS_udp_host),
-            op::String(FLAGS_udp_port) };
-        opWrapper.configure(wrapperStructOutput);
+        //// Extra functionality configuration (use op::WrapperStructExtra{} to disable it)
+        //const op::WrapperStructExtra wrapperStructExtra{
+        //    FLAGS_3d, FLAGS_3d_min_views, FLAGS_identification, FLAGS_tracking, FLAGS_ik_threads };
+        //opWrapper.configure(wrapperStructExtra);
+        //// Output (comment or use default argument to disable any output)
+        //const op::WrapperStructOutput wrapperStructOutput{
+        //    FLAGS_cli_verbose, op::String(FLAGS_write_keypoint), op::stringToDataFormat(FLAGS_write_keypoint_format),
+        //    op::String(FLAGS_write_json), op::String(FLAGS_write_coco_json), FLAGS_write_coco_json_variants,
+        //    FLAGS_write_coco_json_variant, op::String(FLAGS_write_images), op::String(FLAGS_write_images_format),
+        //    op::String(FLAGS_write_video), FLAGS_write_video_fps, FLAGS_write_video_with_audio,
+        //    op::String(FLAGS_write_heatmaps), op::String(FLAGS_write_heatmaps_format), op::String(FLAGS_write_video_3d),
+        //    op::String(FLAGS_write_video_adam), op::String(FLAGS_write_bvh), op::String(FLAGS_udp_host),
+        //    op::String(FLAGS_udp_port) };
+        //opWrapper.configure(wrapperStructOutput);
         // No GUI. Equivalent to: opWrapper.configure(op::WrapperStructGui{});
         // Set to single-thread (for sequential processing and/or debugging and/or reducing latency)
         if (FLAGS_disable_multi_thread)
@@ -67,6 +67,7 @@ void configureWrapper(op::Wrapper& opWrapper)
 }
 JointByOpenpose::JointByOpenpose()
 {
+    std::cout << "Loading Openpose...please wait" << std::endl;
     configureWrapper(opWrapper);
     opWrapper.start();
 }

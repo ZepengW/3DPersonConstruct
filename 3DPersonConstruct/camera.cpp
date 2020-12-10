@@ -59,7 +59,7 @@ void MultiFrameListener::on_frame_ready(astra::StreamReader& reader,
 
 	//this->process_body_3d(bodyFrame, depthFrame);
 	//this->process_rgb(colorFrame);
-	this->process_rgb_body3d(colorFrame, depthFrame);
+	this->process_rgb_body3d(colorFrame, depthFrame,reader.stream<astra::DepthStream>().coordinateMapper());
 	
 }
 
@@ -200,7 +200,7 @@ void MultiFrameListener::process_body_3d(const astra::BodyFrame& bodyFrame,const
 	}
 }
 
-void MultiFrameListener::process_rgb_body3d(const astra::ColorFrame& colorFrame, const astra::DepthFrame& depthFrame)
+void MultiFrameListener::process_rgb_body3d(const astra::ColorFrame& colorFrame, const astra::DepthFrame& depthFrame, astra::CoordinateMapper mapper)
 {
 	if (!colorFrame.is_valid() ||
 		!depthFrame.is_valid())
@@ -212,17 +212,21 @@ void MultiFrameListener::process_rgb_body3d(const astra::ColorFrame& colorFrame,
 	//convert rgb stream to cv::Mat
 	const astra::RgbPixel* colorData = colorFrame.data();
 	uint8_t* dataRgb = (uint8_t*)malloc(width * height * 3 * sizeof(uint8_t));
-	for (int i = 0; i < width * height; i++)
+	for (size_t j = 0; j < height; j++)
 	{
-		dataRgb[3 * i] = colorData[i].b;
-		dataRgb[3 * i + 1] = colorData[i].g;
-		dataRgb[3 * i + 2] = colorData[i].r;
+		for (size_t i = 0; i < width; i++)
+		{
+			dataRgb[3 * (i + width * j)] = colorData[(width - i + width * j)].b;
+			dataRgb[3 * (i + width * j) + 1] = colorData[(width - i + width * j)].g;
+			dataRgb[3 * (i + width * j) + 2] = colorData[(width - i + width * j)].r;
+		}
 	}
 	Mat frameRgb = Mat(height, width, CV_8UC3, (uint8_t*)dataRgb);
+	Mat frameRgbWithJoints = Mat(height, width, CV_8UC3);
 	//get framewithjoints and jointsArray with Openpose
 	op::Array<float> jointsArray_2d;
-	this->jointByOpenpose.getJointsFromRgb(frameRgb, frameRgb, jointsArray_2d);
-	cv::imshow("rgb with joints", frameRgb);
+	this->jointByOpenpose.getJointsFromRgb(frameRgb, frameRgbWithJoints, jointsArray_2d);
+	cv::imshow("rgb with joints", frameRgbWithJoints);
 	waitKey(10);
 	//don't save video and joints if mode is train data capture and not detect person
 	if (jointsArray_2d.empty())
@@ -236,7 +240,8 @@ void MultiFrameListener::process_rgb_body3d(const astra::ColorFrame& colorFrame,
 		this->captureValid = true;
 		this->bodyFrameBeginIdx = depthFrame.frame_index();
 	}
-	this->write_video(this->videoRgbJointsOutput, frameRgb, Size(width, height), this->captureValid, "RgbJoints");
+	this->write_video(this->videoRgbJointsOutput, frameRgbWithJoints, Size(width, height), this->captureValid, "RgbJoints");
+	this->write_video(this->videoRgbJointsOutput, frameRgb, Size(width, height), this->captureValid, "Rgb");
 	//convert 2d joints to 3d joints by depthFrame
 	jsonxx::json j;
 	j["FrameId"] = depthFrame.frame_index() - this->bodyFrameBeginIdx;
@@ -244,18 +249,60 @@ void MultiFrameListener::process_rgb_body3d(const astra::ColorFrame& colorFrame,
 	{
 		int x_i = jointsArray_2d[i * 3];
 		int y_i = jointsArray_2d[i * 3 + 1];
-		int z_i = depthData[y_i * width + x_i];
-		if (i == 7)
+		int z_i = this->getSmoothDepth(depthData, y_i * width + width - x_i, width, height);
+		float x_i_w, y_i_w, z_i_w = 0;
+		mapper.convert_depth_to_world((float)x_i, (float)y_i, (float)z_i, x_i_w, y_i_w, z_i_w);
+		if (i == 0)
 		{
-			std::cout << z_i << std::endl;
+			std::cout << "hand x:" << x_i << " y:" << y_i << " z:" << z_i
+				<< " [world]x:" << x_i_w << " y:" << y_i_w << " z:" << z_i_w
+				<<std::endl;
 		}
 		float score = jointsArray_2d[i * 3 + 2];
-		j["body"][std::to_string(i)] = {x_i,y_i,z_i,score };
+		j["body"][std::to_string(i)] = {x_i,y_i,z_i,score,x_i_w,y_i_w,z_i_w};
 	}
 	this->write_body(j);
-
-	
-
+}
+//对像素点深度信息做均值处理，去噪
+int MultiFrameListener::getSmoothDepth(const int16_t* depth, int idx, int width, int height)
+{
+	if (NULL == depth)
+		return 0;
+	int16_t sum = 0;
+	int count = 0;
+	if (depth[idx] > 0)
+	{
+		sum += depth[idx];
+		count += 1;
+	}
+	if ((idx - 1) > -1 ||
+		depth[idx-1] > 0)
+	{
+		sum += depth[idx-1];
+		count += 1;
+	}
+	if ((idx + 1) < width*height ||
+		depth[idx + 1] > 0)
+	{
+		sum += depth[idx + 1];
+		count += 1;
+	}
+	if ((idx -height ) > -1 ||
+		depth[idx - height] > 0)
+	{
+		sum += depth[idx - height];
+		count += 1;
+	}
+	if ((idx + height) < width*height ||
+		depth[idx + height] > 0)
+	{
+		sum += depth[idx + height];
+		count += 1;
+	}
+	if (0 == count)
+		return 0;
+	else
+		return sum / count;
 
 }
 
@@ -284,7 +331,8 @@ void MultiFrameListener::write_video(VideoWriter &writer,cv::Mat frame, cv::Size
 			mkdir("./output", 0777);
 #endif // LINUX
 		}
-		writer.open("./output/" + std::string(filename)+suffixLabel+".avi", VideoWriter::fourcc('M', 'J', 'P', 'G'), 25, s, true);
+		writer.open("./output/" + std::string(filename)+suffixLabel+".avi", VideoWriter::fourcc('M', 'J', 'P', 'G'), 15, s, true);
+		writer.write(frame);
 	}
 }
 
@@ -314,21 +362,32 @@ void MultiFrameListener::write_body(jsonxx::json j)
 		}
 		this->jointPosOutput.open("./output/" + std::string(filename)+".json",std::ios::out|std::ios::trunc);
 		this->jointJsonVec.clear();
+		this->jointJsonVec.push_back(j);
 	}
 }
 
 void MultiFrameListener::save_close()
 {
+	bool flag = false;
 	if (this->jointPosOutput.is_open())
 	{
 		this->jointPosOutput <<std::setw(4)<< this->jointJsonVec << std::endl;
 		this->jointPosOutput.close();
 		this->jointJsonVec.clear();
+		flag = true;
 	}
 	if (this->videoRgbOutput.isOpened())
+	{
 		this->videoRgbOutput.release();
+		flag = true;
+	}
 	if (this->videoRgbJointsOutput.isOpened())
+	{
 		this->videoRgbJointsOutput.release();
+		flag = true;
+	}
+	if(flag)
+		std::cout << "Video and Joints File Saved." << std::endl;
 }
 
 

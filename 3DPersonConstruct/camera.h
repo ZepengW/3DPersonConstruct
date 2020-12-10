@@ -21,7 +21,8 @@ private:
     void process_point_rgb(const astra::ColorFrame& colorFrame, const astra::PointFrame& pointFrame);
     void process_depth_rgb(const astra::DepthFrame& depthFrame, const astra::ColorFrame& colorFrame);
     void process_body_3d(const astra::BodyFrame& bodyFrame, const astra::DepthFrame& deepthFrame);
-    void process_rgb_body3d(const astra::ColorFrame& colorFrame, const astra::DepthFrame& depthFrame);
+    void process_rgb_body3d(const astra::ColorFrame& colorFrame, const astra::DepthFrame& depthFrame, astra::CoordinateMapper mapper);
+    int getSmoothDepth(const int16_t* depth, int idx, int width, int height);
     void write_video(cv::VideoWriter &writer,cv::Mat frame,cv::Size s, bool valid, std::string suffixLabel="");
     void write_body(jsonxx::json j);
     void save_close();
