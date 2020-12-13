@@ -22,6 +22,7 @@
 #include <LitDepthVisualizer.hpp>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+#include <conio.h>
 
 
 
@@ -38,28 +39,73 @@
 
 
 using namespace cv;
+void updateByKeyboard(bool *captureValid, bool *threadLive);
 
-MultiFrameListener::MultiFrameListener(int width, int height, bool isTrainCapture)//:pointDataWindow(width,height)
+
+MultiFrameListener::MultiFrameListener(int width, int height, int mode)//:pointDataWindow(width,height)
 {
-	this->isTrainCapture = isTrainCapture;
-	this->captureValid = !isTrainCapture;
+	this->mode = mode;
+	switch (mode)
+	{
+	case 0:	//using openpose 
+		this->isTrainCapture = true;
+		this->captureValid = !isTrainCapture;
+		break;
+	case 1: //using astra detect joints
+		this->isTrainCapture = true;
+		this->captureValid = !isTrainCapture;
+		break;
+	case 2: //capture rgb video by keyboard
+	{
+		this->captureValid = !isTrainCapture;
+		//register keypress callback
+		this->threadLive = true;
+		std::thread p = std::thread(updateByKeyboard, &this->captureValid,&this->threadLive);
+		p.detach();
+		break;
+	}
+	default:
+		break;
+	}
+	
 }
 
 MultiFrameListener::~MultiFrameListener()
 {
+	this->threadLive = false;
 	this->save_close();
 }
 
 void MultiFrameListener::on_frame_ready(astra::StreamReader& reader,
 	astra::Frame& frame)
 {
-	const astra::DepthFrame depthFrame = frame.get<astra::DepthFrame>();
-	const astra::ColorFrame colorFrame = frame.get<astra::ColorFrame>();
-	//const astra::BodyFrame bodyFrame = frame.get<astra::BodyFrame>();
+	switch (this->mode)
+	{
+	case 0:
+	{
+		const astra::DepthFrame depthFrame = frame.get<astra::DepthFrame>();
+		const astra::ColorFrame colorFrame = frame.get<astra::ColorFrame>();
+		this->process_rgb_joints_openpose(colorFrame, depthFrame, reader.stream<astra::DepthStream>().coordinateMapper());
+		break;
+	}
+	case 1:
+	{
+		const astra::ColorFrame colorFrame = frame.get<astra::ColorFrame>();
+		const astra::BodyFrame bodyFrame = frame.get<astra::BodyFrame>();
+		const astra::DepthFrame depthFrame = frame.get<astra::DepthFrame>();
+		this->process_joint_astra(bodyFrame, depthFrame);
+		this->process_rgb(colorFrame);
+		break;
+	}
+	case 2:
+	{
+		const astra::ColorFrame colorFrame = frame.get<astra::ColorFrame>();
+		this->process_rgb(colorFrame);
+		break;
+	}
 
-	//this->process_body_3d(bodyFrame, depthFrame);
-	//this->process_rgb(colorFrame);
-	this->process_rgb_body3d(colorFrame, depthFrame,reader.stream<astra::DepthStream>().coordinateMapper());
+	}
+	
 	
 }
 
@@ -108,57 +154,13 @@ void MultiFrameListener::process_rgb(const astra::ColorFrame& colorFrame)
 	free(data);
 }
 
-void MultiFrameListener::process_point(const astra::PointFrame& pointFrame)
-{
-	if (!pointFrame.is_valid())
-		return;
-	int width = pointFrame.width();
-	int height = pointFrame.height();
-
-	samples_astra::common::LitDepthVisualizer visualizer_;
-	visualizer_.update(pointFrame);
-	const astra::RgbPixel* vizBuffer = visualizer_.get_output();
-	uint8_t* data = (uint8_t*)malloc(width * height * 3 * sizeof(uint8_t));
-	for (int i = 0; i < width * height; i++)
-	{
-		data[3 * i] = vizBuffer[i].b;
-		data[3 * i + 1] = vizBuffer[i].g;
-		data[3 * i + 2] = vizBuffer[i].r;
-	}
-	Mat frame = Mat(height, width, CV_8UC3, (uint8_t *)data);
-	cv::imshow("depth", frame);
-	waitKey(10);
-	free(data);
-}
-
-void MultiFrameListener::process_point_rgb(const astra::ColorFrame& colorFrame, const astra::PointFrame& pointFrame)
-{
-	if((!colorFrame.is_valid())||
-		(!pointFrame.is_valid()))
-		return;
-	int width = pointFrame.width();
-	int height = pointFrame.height();
-	
-	const astra::Vector3f* pointData = pointFrame.data();
-	const astra::RgbPixel* colorData = colorFrame.data();
-	
-	//this->pointDataWindow.display(pointData,colorData,width,height);
-}
-
-void MultiFrameListener::process_depth_rgb(const astra::DepthFrame& depthFrame, const astra::ColorFrame& colorFrame)
-{
-	if ((!depthFrame.is_valid())||
-		(!colorFrame.is_valid()))
-		return;
-	int width = depthFrame.width();
-	int height = depthFrame.height();
-
-	const int16_t* depthData = depthFrame.data();
-	const astra::RgbPixel* colorData = colorFrame.data();
-	//this->pointDataWindow.display(depthData, colorData, width, height);
-}
-
-void MultiFrameListener::process_body_3d(const astra::BodyFrame& bodyFrame,const astra::DepthFrame& depthFrame)
+/// <summary>
+/// 使用astra sdk提取骨骼信息 输出骨骼 json文件
+///
+/// </summary>
+/// <param name="bodyFrame"></param>
+/// <param name="depthFrame"></param>
+void MultiFrameListener::process_joint_astra(const astra::BodyFrame& bodyFrame,const astra::DepthFrame& depthFrame)
 {
 	if (!bodyFrame.is_valid()||!depthFrame.is_valid() || bodyFrame.info().width() == 0 || bodyFrame.info().height() == 0)
 		return;
@@ -196,11 +198,17 @@ void MultiFrameListener::process_body_3d(const astra::BodyFrame& bodyFrame,const
 			j["body-"+std::to_string(body.id())][std::to_string((int)type)] = { int(pose.x),int(pose.y),z,(int)status};
 		}
 		//this->pointDataWindow.display_joints(jointPositions,jointStatus);
-		this->write_body(j);
+		this->write_json(j);
 	}
 }
 
-void MultiFrameListener::process_rgb_body3d(const astra::ColorFrame& colorFrame, const astra::DepthFrame& depthFrame, astra::CoordinateMapper mapper)
+/// <summary>
+/// 使用openpose提取rgb视频流中骨骼信息，输出视频，带骨骼点的视频，以及骨骼点json文件
+/// </summary>
+/// <param name="colorFrame"></param>
+/// <param name="depthFrame"></param>
+/// <param name="mapper"></param>
+void MultiFrameListener::process_rgb_joints_openpose(const astra::ColorFrame& colorFrame, const astra::DepthFrame& depthFrame, astra::CoordinateMapper mapper)
 {
 	if (!colorFrame.is_valid() ||
 		!depthFrame.is_valid())
@@ -241,7 +249,7 @@ void MultiFrameListener::process_rgb_body3d(const astra::ColorFrame& colorFrame,
 		this->bodyFrameBeginIdx = depthFrame.frame_index();
 	}
 	this->write_video(this->videoRgbJointsOutput, frameRgbWithJoints, Size(width, height), this->captureValid, "RgbJoints");
-	this->write_video(this->videoRgbJointsOutput, frameRgb, Size(width, height), this->captureValid, "Rgb");
+	this->write_video(this->videoRgbOutput, frameRgb, Size(width, height), this->captureValid, "Rgb");
 	//convert 2d joints to 3d joints by depthFrame
 	jsonxx::json j;
 	j["FrameId"] = depthFrame.frame_index() - this->bodyFrameBeginIdx;
@@ -249,19 +257,20 @@ void MultiFrameListener::process_rgb_body3d(const astra::ColorFrame& colorFrame,
 	{
 		int x_i = jointsArray_2d[i * 3];
 		int y_i = jointsArray_2d[i * 3 + 1];
-		int z_i = this->getSmoothDepth(depthData, y_i * width + width - x_i, width, height);
+		int z_i = depthData[y_i * width + width - x_i];
+		//int z_i = this->getSmoothDepth(depthData, y_i * width + width - x_i, width, height);
 		float x_i_w, y_i_w, z_i_w = 0;
 		mapper.convert_depth_to_world((float)x_i, (float)y_i, (float)z_i, x_i_w, y_i_w, z_i_w);
-		if (i == 0)
+		if (i == 1)
 		{
-			std::cout << "hand x:" << x_i << " y:" << y_i << " z:" << z_i
+			std::cout << "neck x:" << x_i << " y:" << y_i << " z:" << z_i
 				<< " [world]x:" << x_i_w << " y:" << y_i_w << " z:" << z_i_w
 				<<std::endl;
 		}
 		float score = jointsArray_2d[i * 3 + 2];
 		j["body"][std::to_string(i)] = {x_i,y_i,z_i,score,x_i_w,y_i_w,z_i_w};
 	}
-	this->write_body(j);
+	this->write_json(j);
 }
 //对像素点深度信息做均值处理，去噪
 int MultiFrameListener::getSmoothDepth(const int16_t* depth, int idx, int width, int height)
@@ -311,6 +320,11 @@ void MultiFrameListener::write_video(VideoWriter &writer,cv::Mat frame, cv::Size
 {
 	if (writer.isOpened())
 	{
+		if (false == valid)
+		{
+			this->save_close();
+			return;
+		}
 		writer.write(frame);
 	}
 	else if(valid)
@@ -336,7 +350,7 @@ void MultiFrameListener::write_video(VideoWriter &writer,cv::Mat frame, cv::Size
 	}
 }
 
-void MultiFrameListener::write_body(jsonxx::json j)
+void MultiFrameListener::write_json(jsonxx::json j)
 {
 	if (this->jointPosOutput.is_open())
 	{
@@ -391,5 +405,24 @@ void MultiFrameListener::save_close()
 }
 
 
+void updateByKeyboard(bool* captureValid, bool* threadLive)
+{
+	while (*threadLive)
+	{
+		if (0 == kbhit())
+			continue;
+		int ch = getch();
+		switch (ch)
+		{
+		case 115: //stop
+			*captureValid = false;
+			break;
+		case 32:  //space
+			*captureValid = true;
+			break;
+		default:
+			break;
+		}
+	}
 
-
+}

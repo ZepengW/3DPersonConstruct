@@ -5,11 +5,22 @@
 #include "point_data_visualizer.h"
 #include <jsonxx/json.hpp>
 #include "joint_by_openpose.h"
+#include <thread>
 
 class MultiFrameListener : public astra::FrameListener
 {
 public:
-    MultiFrameListener(int width,int length, bool isTrainCapture);
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="width"></param>
+    /// <param name="length"></param>
+    /// <param name="mode">
+    ///     0 : collect data mode, using openpose, output: rgb_video, rgbwithJoint_video, joint_json
+    ///     1 : collect data mode, using astra bone detect.
+    ///     2 : collect data mode, using space to begin and space to stop.
+    /// </param>
+    MultiFrameListener(int width,int length, int mode);
     ~MultiFrameListener();
 private:
 
@@ -17,14 +28,11 @@ private:
         astra::Frame& frame) override;
     void process_depth(const astra::DepthFrame& depthFrame);
     void process_rgb(const astra::ColorFrame& colorFrame);
-    void process_point(const astra::PointFrame& pointFrame);
-    void process_point_rgb(const astra::ColorFrame& colorFrame, const astra::PointFrame& pointFrame);
-    void process_depth_rgb(const astra::DepthFrame& depthFrame, const astra::ColorFrame& colorFrame);
-    void process_body_3d(const astra::BodyFrame& bodyFrame, const astra::DepthFrame& deepthFrame);
-    void process_rgb_body3d(const astra::ColorFrame& colorFrame, const astra::DepthFrame& depthFrame, astra::CoordinateMapper mapper);
+    void process_joint_astra(const astra::BodyFrame& bodyFrame, const astra::DepthFrame& deepthFrame);
+    void process_rgb_joints_openpose(const astra::ColorFrame& colorFrame, const astra::DepthFrame& depthFrame, astra::CoordinateMapper mapper);
     int getSmoothDepth(const int16_t* depth, int idx, int width, int height);
     void write_video(cv::VideoWriter &writer,cv::Mat frame,cv::Size s, bool valid, std::string suffixLabel="");
-    void write_body(jsonxx::json j);
+    void write_json(jsonxx::json j);
     void save_close();
     std::vector<jsonxx::json> jointJsonVec;
     
@@ -42,8 +50,12 @@ private:
 
     bool isTrainCapture;
     bool captureValid;
+    bool threadLive;
 
     int bodyFrameBeginIdx = 0;
+    int mode = 0;
+
+    
 
     //PointDataWindow pointDataWindow;
 };
