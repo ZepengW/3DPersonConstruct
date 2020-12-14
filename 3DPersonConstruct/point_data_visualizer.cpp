@@ -23,6 +23,7 @@ PointDataWindow::PointDataWindow(int width, int height)
 	//event callback
 	glfwSetMouseButtonCallback((GLFWwindow*)window, mouse_button_callback);
 	glfwSetKeyCallback((GLFWwindow*)window, key_down_callback);
+	//glfwHideWindow((GLFWwindow*)this->window);
 }
 
 PointDataWindow::~PointDataWindow()

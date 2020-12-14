@@ -40,6 +40,8 @@
 
 using namespace cv;
 void updateByKeyboard(bool *captureValid, bool *threadLive);
+//将骨骼点及骨骼添加至Mat图中
+void drawJointsInMat(Mat& frame, std::map<astra::JointType, astra::Vector2i> jointsPosition, int label);
 
 
 MultiFrameListener::MultiFrameListener(int width, int height, int mode)//:pointDataWindow(width,height)
@@ -48,10 +50,8 @@ MultiFrameListener::MultiFrameListener(int width, int height, int mode)//:pointD
 	switch (mode)
 	{
 	case 0:	//using openpose 
-		this->isTrainCapture = true;
-		this->captureValid = !isTrainCapture;
-		break;
-	case 1: //using astra detect joints
+	case 1: //using astra detect joints and draw in 3d
+	case 3: //using astra detect joints and draw in 2d
 		this->isTrainCapture = true;
 		this->captureValid = !isTrainCapture;
 		break;
@@ -85,7 +85,7 @@ void MultiFrameListener::on_frame_ready(astra::StreamReader& reader,
 	{
 		const astra::DepthFrame depthFrame = frame.get<astra::DepthFrame>();
 		const astra::ColorFrame colorFrame = frame.get<astra::ColorFrame>();
-		this->process_rgb_joints_openpose(colorFrame, depthFrame, reader.stream<astra::DepthStream>().coordinateMapper());
+		this->process_rgb_joints3d_openpose(colorFrame, depthFrame, reader.stream<astra::DepthStream>().coordinateMapper());
 		break;
 	}
 	case 1:
@@ -100,7 +100,16 @@ void MultiFrameListener::on_frame_ready(astra::StreamReader& reader,
 	case 2:
 	{
 		const astra::ColorFrame colorFrame = frame.get<astra::ColorFrame>();
+		const astra::DepthFrame depthFrame = frame.get<astra::DepthFrame>();
 		this->process_rgb(colorFrame);
+		this->process_depth(depthFrame);
+		break;
+	}
+	case 3:
+	{
+		const astra::ColorFrame colorFrame = frame.get<astra::ColorFrame>();
+		const astra::BodyFrame bodyFrame = frame.get<astra::BodyFrame>();
+		this->process_rgb_joints2d_astra(colorFrame, bodyFrame);
 		break;
 	}
 
@@ -117,11 +126,18 @@ void MultiFrameListener::process_depth(const astra::DepthFrame& depthFrame)
 	int height = depthFrame.height();
 
 	const int16_t* depthData = depthFrame.data();
-	std::cout << width * height << ";" << depthFrame.length() << std::endl;
-	int16_t* data_test=(int16_t*)malloc(depthFrame.length() * sizeof(int16_t));
-	depthFrame.copy_to(data_test);
-	Mat frame = Mat(height, width, CV_16UC1, data_test);
-	cv::imshow("test3", frame);
+
+	uint16_t* data = (uint16_t*)malloc(width * height * sizeof(uint16_t));
+	for (size_t j = 0; j < height; j++)
+	{
+		for (size_t i = 0; i < width; i++)
+		{
+			data[i + width * j] = depthData[(width - i + width * j)];
+		}
+	}
+	Mat frame = Mat(height, width, CV_16UC1, data);
+	write_video(this->videoDepthOutput, frame, Size(width, height), this->captureValid, "Depth");
+	cv::imshow("depth", frame);
 	waitKey(10);
 
 }
@@ -147,7 +163,7 @@ void MultiFrameListener::process_rgb(const astra::ColorFrame& colorFrame)
 	}
 
 	Mat frame = Mat(height, width, CV_8UC3, (uint8_t *)data);
-	write_video(this->videoRgbOutput,frame, Size(width, height), this->captureValid, "");
+	write_video(this->videoRgbOutput,frame, Size(width, height), this->captureValid, "Rgb");
 	cv::imshow("rgb", frame);
 	waitKey(10);
 	free(buffer_color);
@@ -208,7 +224,7 @@ void MultiFrameListener::process_joint_astra(const astra::BodyFrame& bodyFrame,c
 /// <param name="colorFrame"></param>
 /// <param name="depthFrame"></param>
 /// <param name="mapper"></param>
-void MultiFrameListener::process_rgb_joints_openpose(const astra::ColorFrame& colorFrame, const astra::DepthFrame& depthFrame, astra::CoordinateMapper mapper)
+void MultiFrameListener::process_rgb_joints3d_openpose(const astra::ColorFrame& colorFrame, const astra::DepthFrame& depthFrame, astra::CoordinateMapper mapper)
 {
 	if (!colorFrame.is_valid() ||
 		!depthFrame.is_valid())
@@ -271,6 +287,54 @@ void MultiFrameListener::process_rgb_joints_openpose(const astra::ColorFrame& co
 		j["body"][std::to_string(i)] = {x_i,y_i,z_i,score,x_i_w,y_i_w,z_i_w};
 	}
 	this->write_json(j);
+	free(dataRgb);
+}
+/// <summary>
+/// 利用astra sdk 提取骨骼点二维信息，并标注在rgb图上
+/// </summary>
+/// <param name="colorFrame"></param>
+/// <param name="bodyFrame"></param>
+void MultiFrameListener::process_rgb_joints2d_astra(const astra::ColorFrame& colorFrame, const astra::BodyFrame& bodyFrame)
+{
+	if (!colorFrame.is_valid() ||
+		!bodyFrame.is_valid())
+	{
+		return;
+	}
+	int width = colorFrame.width();
+	int height = colorFrame.height();
+	//convert rgb stream to cv::Mat
+	const astra::RgbPixel* colorData = colorFrame.data();
+	uint8_t* dataRgb = (uint8_t*)malloc(width * height * 3 * sizeof(uint8_t));
+	for (size_t j = 0; j < height; j++)
+	{
+		for (size_t i = 0; i < width; i++)
+		{
+			dataRgb[3 * (i + width * j)] = colorData[(width - i + width * j)].b;
+			dataRgb[3 * (i + width * j) + 1] = colorData[(width - i + width * j)].g;
+			dataRgb[3 * (i + width * j) + 2] = colorData[(width - i + width * j)].r;
+		}
+	}
+	Mat frameRgb = Mat(height, width, CV_8UC3, (uint8_t*)dataRgb);
+	Mat frameRgbWithJoints = frameRgb.clone();
+	for (auto& body : bodyFrame.bodies())
+	{
+		std::map<astra::JointType, astra::Vector2i> jointPositions;
+		for (auto& joint : body.joints())
+		{
+			if (joint.status() == astra::JointStatus::NotTracked)
+				continue;
+			astra::JointType type = joint.type();
+			const auto& pose = joint.depth_position();
+			jointPositions[type] = astra::Vector2i(width-pose.x, pose.y);
+		}
+		drawJointsInMat(frameRgbWithJoints, jointPositions, 0);
+	}
+	cv::imshow("rgb with joints", frameRgbWithJoints);
+	cv::waitKey(10);
+
+	free(dataRgb);
+
 }
 //对像素点深度信息做均值处理，去噪
 int MultiFrameListener::getSmoothDepth(const int16_t* depth, int idx, int width, int height)
@@ -400,6 +464,11 @@ void MultiFrameListener::save_close()
 		this->videoRgbJointsOutput.release();
 		flag = true;
 	}
+	if (this->videoDepthOutput.isOpened())
+	{
+		this->videoDepthOutput.release();
+		flag = true;
+	}
 	if(flag)
 		std::cout << "Video and Joints File Saved." << std::endl;
 }
@@ -426,3 +495,51 @@ void updateByKeyboard(bool* captureValid, bool* threadLive)
 	}
 
 }
+
+void drawLine(Mat& frame, std::map<astra::JointType, astra::Vector2i> jointsPosition, astra::JointType v1, astra::JointType v2)
+{
+	Scalar color_line = Scalar(255, 0, 0);
+	if (0 == jointsPosition.count(v1) ||
+		0 == jointsPosition.count(v2))
+		return;
+	Point p1 = Point(jointsPosition[v1].x, jointsPosition[v1].y);
+	Point p2 = Point(jointsPosition[v2].x, jointsPosition[v2].y);
+	line(frame, p1, p2, color_line, 3);
+
+}
+void drawJointsInMat(Mat& frame, std::map<astra::JointType, astra::Vector2i> jointsPosition, int label)
+{
+	Scalar color_point = Scalar(0, 0, 255);
+	//draw joints
+	for (auto jointPos : jointsPosition)
+	{
+		Point p = Point(jointPos.second.x, jointPos.second.y);
+		circle(frame, p, 3, color_point, -1);
+	}
+	//draw bones
+	drawLine(frame,jointsPosition, astra::JointType::Head, astra::JointType::Neck);
+	drawLine(frame, jointsPosition, astra::JointType::Neck, astra::JointType::ShoulderSpine);
+
+	drawLine(frame, jointsPosition, astra::JointType::ShoulderSpine, astra::JointType::LeftShoulder);
+	drawLine(frame, jointsPosition, astra::JointType::LeftShoulder, astra::JointType::LeftElbow);
+	drawLine(frame, jointsPosition, astra::JointType::LeftElbow, astra::JointType::LeftWrist);
+	drawLine(frame, jointsPosition, astra::JointType::LeftWrist, astra::JointType::LeftHand);
+
+	drawLine(frame, jointsPosition, astra::JointType::ShoulderSpine, astra::JointType::RightShoulder);
+	drawLine(frame, jointsPosition, astra::JointType::RightShoulder, astra::JointType::RightElbow);
+	drawLine(frame, jointsPosition, astra::JointType::RightElbow, astra::JointType::RightWrist);
+	drawLine(frame, jointsPosition, astra::JointType::RightWrist, astra::JointType::RightHand);
+
+	drawLine(frame, jointsPosition, astra::JointType::ShoulderSpine, astra::JointType::MidSpine);
+	drawLine(frame, jointsPosition, astra::JointType::MidSpine, astra::JointType::BaseSpine);
+
+	drawLine(frame, jointsPosition, astra::JointType::BaseSpine, astra::JointType::LeftHip);
+	drawLine(frame, jointsPosition, astra::JointType::LeftHip, astra::JointType::LeftKnee);
+	drawLine(frame, jointsPosition, astra::JointType::LeftKnee, astra::JointType::LeftFoot);
+
+	drawLine(frame, jointsPosition, astra::JointType::BaseSpine, astra::JointType::RightHip);
+	drawLine(frame, jointsPosition, astra::JointType::RightHip, astra::JointType::RightKnee);
+	drawLine(frame, jointsPosition, astra::JointType::RightKnee, astra::JointType::RightFoot);
+
+}
+

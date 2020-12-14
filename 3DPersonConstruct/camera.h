@@ -17,8 +17,9 @@ public:
     /// <param name="length"></param>
     /// <param name="mode">
     ///     0 : collect data mode, using openpose, output: rgb_video, rgbwithJoint_video, joint_json
-    ///     1 : collect data mode, using astra bone detect.
+    ///     1 : collect data mode, using astra bone detect, show bone in 3d
     ///     2 : collect data mode, using space to begin and space to stop.
+    ///     3 : collect data mode, using astra bone detect, show bone in 2d
     /// </param>
     MultiFrameListener(int width,int length, int mode);
     ~MultiFrameListener();
@@ -29,7 +30,8 @@ private:
     void process_depth(const astra::DepthFrame& depthFrame);
     void process_rgb(const astra::ColorFrame& colorFrame);
     void process_joint_astra(const astra::BodyFrame& bodyFrame, const astra::DepthFrame& deepthFrame);
-    void process_rgb_joints_openpose(const astra::ColorFrame& colorFrame, const astra::DepthFrame& depthFrame, astra::CoordinateMapper mapper);
+    void process_rgb_joints3d_openpose(const astra::ColorFrame& colorFrame, const astra::DepthFrame& depthFrame, astra::CoordinateMapper mapper);
+    void process_rgb_joints2d_astra(const astra::ColorFrame& colorFrame, const astra::BodyFrame& bodyFrame);
     int getSmoothDepth(const int16_t* depth, int idx, int width, int height);
     void write_video(cv::VideoWriter &writer,cv::Mat frame,cv::Size s, bool valid, std::string suffixLabel="");
     void write_json(jsonxx::json j);
@@ -43,6 +45,7 @@ private:
     std::chrono::time_point<clock_type> lastTimepoint_{ clock_type::now() };
 
     cv::VideoWriter videoRgbOutput;
+    cv::VideoWriter videoDepthOutput;
     cv::VideoWriter videoRgbJointsOutput;
     std::ofstream jointPosOutput;
 

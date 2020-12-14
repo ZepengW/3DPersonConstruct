@@ -26,7 +26,7 @@ int process(const char* licenseString)
 
 	astra::StreamSet streamSet;
 	astra::StreamReader reader = streamSet.create_reader();
-	MultiFrameListener listener(WIDTH, HEIGHT, 2);
+	MultiFrameListener listener(WIDTH, HEIGHT, 3);
 
 	if (reader.stream<astra::DepthStream>().is_available() == false)
 		return -1;
@@ -41,6 +41,8 @@ int process(const char* licenseString)
 	mode_rgb.set_height(HEIGHT);
 	reader.stream<astra::ColorStream>().set_mode(mode_rgb);
 	reader.stream<astra::ColorStream>().start();
+
+	reader.stream<astra::BodyStream>().start();
 
 	reader.add_listener(listener);
 
